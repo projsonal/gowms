@@ -1,0 +1,168 @@
+package barang_masuk
+
+import (
+	"errors"
+	"time"
+
+	"gorm.io/gorm"
+
+	"github.com/projsonal/gostock/internal/model"
+	"github.com/projsonal/gostock/pkg/constant"
+	"github.com/projsonal/gostock/pkg/utils"
+)
+
+func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
+	if f.Status != "" {
+		q = q.Where(constant.QueryStatusEq, f.Status)
+	}
+	if f.GudangID != 0 {
+		q = q.Where(constant.QueryGudangIDEq, f.GudangID)
+	}
+	if f.PurchaseOrderID != 0 {
+		q = q.Where("purchase_order_id = ?", f.PurchaseOrderID)
+	}
+	return q
+}
+
+func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangMasuk, int64, error) {
+	var list []model.BarangMasuk
+	var total int64
+
+	q := applyFilter(r.db.Model(&model.BarangMasuk{}), f)
+	if p.Search != "" {
+		q = q.Where("nomor_penerimaan ILIKE ?", "%"+p.Search+"%")
+	}
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := p.Apply(q.Session(&gorm.Session{}).Preload("Gudang").Preload("Supplier").Preload("PurchaseOrder").Order("id desc")).
+		Find(&list).Error; err != nil {
+		return nil, 0, err
+	}
+	return list, total, nil
+}
+
+func (r *repository) FindByID(id uint) (*model.BarangMasuk, error) {
+	var bm model.BarangMasuk
+	err := r.db.Preload("Gudang").Preload("Supplier").Preload("PurchaseOrder").
+		Preload("Items").Preload("Items.Barang").Preload("Items.Rak").
+		First(&bm, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &bm, nil
+}
+
+func (r *repository) FindByNomor(nomor string) (*model.BarangMasuk, error) {
+	var bm model.BarangMasuk
+	if err := r.db.Where("nomor_penerimaan = ?", nomor).First(&bm).Error; err != nil {
+		return nil, err
+	}
+	return &bm, nil
+}
+
+func (r *repository) Create(bm *model.BarangMasuk) error {
+	return r.db.Create(bm).Error
+}
+
+func (r *repository) Update(bm *model.BarangMasuk, items []model.BarangMasukItem) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("barang_masuk_id = ?", bm.ID).Delete(&model.BarangMasukItem{}).Error; err != nil {
+			return err
+		}
+		for i := range items {
+			items[i].ID = 0
+			items[i].BarangMasukID = bm.ID
+		}
+		if len(items) > 0 {
+			if err := tx.Create(&items).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Save(bm).Error
+	})
+}
+
+func (r *repository) Delete(id uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("barang_masuk_id = ?", id).Delete(&model.BarangMasukItem{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&model.BarangMasuk{}, id).Error
+	})
+}
+
+func (r *repository) Complete(id uint, userID uint) (*model.BarangMasuk, error) {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		var bm model.BarangMasuk
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Preload("Items").First(&bm, id).Error; err != nil {
+			return err
+		}
+		if bm.Status != constant.StatusBMDraft {
+			return errors.New(constant.ErrBMBukanDraft)
+		}
+
+		for _, item := range bm.Items {
+			if err := tx.Model(&model.Barang{}).Where("id = ?", item.BarangID).
+				Update("stok", gorm.Expr("stok + ?", item.Qty)).Error; err != nil {
+				return err
+			}
+			if item.RakID != nil {
+				if err := adjustRak(tx, *item.RakID, item.Qty); err != nil {
+					return err
+				}
+			}
+			if bm.PurchaseOrderID != nil && r.poRepo != nil {
+				if err := r.poRepo.TambahPenerimaan(tx, *bm.PurchaseOrderID, item.BarangID, item.Qty); err != nil {
+					return err
+				}
+			}
+		}
+
+		now := time.Now()
+		return tx.Model(&model.BarangMasuk{}).Where("id = ?", id).Updates(map[string]interface{}{
+			"status":        constant.StatusBMSelesai,
+			"diterima_oleh": userID,
+			"completed_at":  now,
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.FindByID(id)
+}
+
+// adjustRak menambah/mengurangi Terisi pada rak, meng-clamp ke [0, tak
+// terbatas] lalu menghitung ulang status kosong/terisi_sebagian/penuh —
+// sama persis dengan logika Rak.RecalculateStatus di modul Manajemen
+// Gudang (murni dari angka tercatat, tidak perlu sensor IoT).
+func adjustRak(tx *gorm.DB, rakID uint, delta int) error {
+	var rak model.Rak
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&rak, rakID).Error; err != nil {
+		return err
+	}
+	rak.Terisi += delta
+	if rak.Terisi < 0 {
+		rak.Terisi = 0
+	}
+	rak.RecalculateStatus()
+	return tx.Save(&rak).Error
+}
+
+func (r *repository) Batalkan(id uint) (*model.BarangMasuk, error) {
+	res := r.db.Model(&model.BarangMasuk{}).Where("id = ? AND status = ?", id, constant.StatusBMDraft).
+		Update("status", constant.StatusBMDibatalkan)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, errors.New(constant.ErrBMBukanDraft)
+	}
+	return r.FindByID(id)
+}
+
+func (r *repository) CountByStatus(status string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.BarangMasuk{}).Where(constant.QueryStatusEq, status).Count(&count).Error
+	return count, err
+}

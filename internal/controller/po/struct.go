@@ -1,0 +1,48 @@
+package purchase_order
+
+import (
+	"time"
+
+	poRepo "github.com/projsonal/gostock/internal/repositories/po"
+	"github.com/projsonal/gostock/internal/repositories/role"
+	supplierRepo "github.com/projsonal/gostock/internal/repositories/supplier"
+	"github.com/projsonal/gostock/pkg/utils"
+)
+
+type Controller struct {
+	repo         poRepo.Repository
+	supplierRepo supplierRepo.Repository
+	roleRepo     role.Repository
+	jwtSvc       *utils.JWTService
+}
+
+func New(repo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService) *Controller {
+	return &Controller{repo: repo, supplierRepo: supplierRepo, roleRepo: roleRepo, jwtSvc: jwtSvc}
+}
+
+// ---- DTO ----
+
+type ItemRequest struct {
+	BarangID    uint  `json:"barang_id" validate:"required"`
+	QtyPesan    int   `json:"qty_pesan" validate:"required,min=1"`
+	HargaSatuan int64 `json:"harga_satuan" validate:"min=0"`
+}
+
+type PORequest struct {
+	SupplierID       uint          `json:"supplier_id" validate:"required"`
+	TanggalPO        time.Time     `json:"tanggal_po" validate:"required"`
+	CatatanPengajuan string        `json:"catatan_pengajuan" validate:"max=255"`
+	Items            []ItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+type SetujuiTolakRequest struct {
+	Setuju  bool   `json:"setuju"`
+	Catatan string `json:"catatan" validate:"max=255"`
+}
+
+type SummaryResponse struct {
+	TotalPO             int64 `json:"total_po"`
+	MenungguPersetujuan int64 `json:"menunggu_persetujuan"`
+	Disetujui           int64 `json:"disetujui"`
+	Selesai             int64 `json:"selesai"`
+}
