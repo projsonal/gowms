@@ -3,8 +3,8 @@ package middleware
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type PermissionChecker interface {

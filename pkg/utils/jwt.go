@@ -7,7 +7,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/projsonal/gostock/pkg/config"
+	"github.com/projsonal/gowms/pkg/config"
 )
 
 type JWTClaims struct {

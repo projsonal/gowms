@@ -2,10 +2,11 @@ package routes
 
 import (
 	"github.com/gofiber/fiber/v2"
+	fiberSwagger "github.com/gofiber/swagger"
 
-	"github.com/projsonal/gostock/internal/controller"
-	"github.com/projsonal/gostock/internal/middleware"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/controller"
+	"github.com/projsonal/gowms/internal/middleware"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 func SetupRouter(deps *Dependencies) *fiber.App {
@@ -21,6 +22,14 @@ func SetupRouter(deps *Dependencies) *fiber.App {
 	app.Get("/health/live", deps.HealthController.Live)
 	app.Get("/health/ready", deps.HealthController.Ready)
 	app.Get("/health", deps.HealthController.Health)
+
+	if deps.Cfg.Swagger.Enabled {
+		swaggerRoute := app.Group("/swagger")
+		if deps.Cfg.Swagger.BasicAuthUser != "" {
+			swaggerRoute.Use(middleware.SwaggerBasicAuth(deps.Cfg.Swagger.BasicAuthUser, deps.Cfg.Swagger.BasicAuthPass))
+		}
+		swaggerRoute.Get("/*", fiberSwagger.HandlerDefault)
+	}
 
 	api := app.Group("/stockrsd")
 

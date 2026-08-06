@@ -3,13 +3,13 @@ package barang_masuk
 import (
 	"time"
 
-	barangRepo "github.com/projsonal/gostock/internal/repositories/barang"
-	bmRepo "github.com/projsonal/gostock/internal/repositories/barang_masuk"
-	gudangRepo "github.com/projsonal/gostock/internal/repositories/gudang"
-	poRepo "github.com/projsonal/gostock/internal/repositories/po"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	supplierRepo "github.com/projsonal/gostock/internal/repositories/supplier"
-	"github.com/projsonal/gostock/pkg/utils"
+	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
+	bmRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
+	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	poRepo "github.com/projsonal/gowms/internal/repositories/po"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

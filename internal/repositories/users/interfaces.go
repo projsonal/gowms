@@ -5,8 +5,8 @@ package users
 import (
 	"time"
 
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 // Repository mendefinisikan seluruh operasi data untuk User.

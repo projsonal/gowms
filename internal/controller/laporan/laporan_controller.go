@@ -9,15 +9,15 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/internal/middleware"
-	barangRepoPkg "github.com/projsonal/gostock/internal/repositories/barang"
-	barangKeluarRepoPkg "github.com/projsonal/gostock/internal/repositories/barang_keluar"
-	barangMasukRepoPkg "github.com/projsonal/gostock/internal/repositories/barang_masuk"
-	purchaseOrderRepoPkg "github.com/projsonal/gostock/internal/repositories/po"
-	stockOpnameRepoPkg "github.com/projsonal/gostock/internal/repositories/stockOpname"
-	"github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/reportexport"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/middleware"
+	barangRepoPkg "github.com/projsonal/gowms/internal/repositories/barang"
+	barangKeluarRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_keluar"
+	barangMasukRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_masuk"
+	purchaseOrderRepoPkg "github.com/projsonal/gowms/internal/repositories/po"
+	stockOpnameRepoPkg "github.com/projsonal/gowms/internal/repositories/stockOpname"
+	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/reportexport"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 const Module = constant.ModuleLaporan

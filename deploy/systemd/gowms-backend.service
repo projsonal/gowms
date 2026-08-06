@@ -1,0 +1,28 @@
+# /etc/systemd/system/gowms-backend.service
+[Unit]
+Description=GoWMS Backend (Fiber API)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=gowms
+Group=gowms
+WorkingDirectory=/opt/gowms/backend
+EnvironmentFile=/opt/gowms/backend/.env
+ExecStart=/opt/gowms/backend/gowms-backend
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+# Hardening dasar
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+StandardOutput=append:/var/log/gowms/backend.log
+StandardError=append:/var/log/gowms/backend.error.log
+
+[Install]
+WantedBy=multi-user.target

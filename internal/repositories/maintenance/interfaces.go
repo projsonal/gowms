@@ -3,7 +3,7 @@ package maintenance
 import (
 	"time"
 
-	"github.com/projsonal/gostock/internal/model"
+	"github.com/projsonal/gowms/internal/model"
 )
 
 type Repository interface {

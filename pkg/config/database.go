@@ -8,8 +8,8 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/constant"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/constant"
 )
 
 func NewDatabase(cfg *Config) *gorm.DB {

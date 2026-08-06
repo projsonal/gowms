@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/projsonal/gostock/internal/model"
+	"github.com/projsonal/gowms/internal/model"
 )
 
 const singletonID = 1

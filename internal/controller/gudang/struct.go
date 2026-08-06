@@ -1,9 +1,9 @@
 package gudang
 
 import (
-	gudangRepo "github.com/projsonal/gostock/internal/repositories/gudang"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	"github.com/projsonal/gostock/pkg/utils"
+	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

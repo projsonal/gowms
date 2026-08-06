@@ -6,11 +6,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/internal/middleware"
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/constant"
-	cons "github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/middleware"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/constant"
+	cons "github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 // roleNameMap mengambil SEMUA role dalam satu query lalu memetakannya

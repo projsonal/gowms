@@ -10,7 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
-	"github.com/projsonal/gostock/pkg/config"
+	"github.com/projsonal/gowms/pkg/config"
 )
 
 // containsWildcard mengecek apakah salah satu origin di daftar adalah "*".

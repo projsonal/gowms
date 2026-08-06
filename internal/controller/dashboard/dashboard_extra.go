@@ -5,8 +5,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/utils"
 	"gorm.io/gorm"
 )
 

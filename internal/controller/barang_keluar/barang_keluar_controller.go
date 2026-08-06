@@ -8,11 +8,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/internal/middleware"
-	"github.com/projsonal/gostock/internal/model"
-	bkRepo "github.com/projsonal/gostock/internal/repositories/barang_keluar"
-	"github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/middleware"
+	"github.com/projsonal/gowms/internal/model"
+	bkRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
+	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 const Module = constant.ModuleBarangKeluar

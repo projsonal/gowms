@@ -3,7 +3,7 @@ package security
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 func (h *Controller) Check(c *fiber.Ctx) error {

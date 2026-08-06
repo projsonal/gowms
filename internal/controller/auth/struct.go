@@ -3,15 +3,15 @@ package auth
 import (
 	"time"
 
-	authRepo "github.com/projsonal/gostock/internal/repositories/auth"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	"github.com/projsonal/gostock/internal/repositories/users"
-	"github.com/projsonal/gostock/pkg/captcha"
-	"github.com/projsonal/gostock/pkg/config"
-	"github.com/projsonal/gostock/pkg/geoip"
-	"github.com/projsonal/gostock/pkg/otp"
-	"github.com/projsonal/gostock/pkg/utils"
-	"github.com/projsonal/gostock/pkg/wa"
+	authRepo "github.com/projsonal/gowms/internal/repositories/auth"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	"github.com/projsonal/gowms/internal/repositories/users"
+	"github.com/projsonal/gowms/pkg/captcha"
+	"github.com/projsonal/gowms/pkg/config"
+	"github.com/projsonal/gowms/pkg/geoip"
+	"github.com/projsonal/gowms/pkg/otp"
+	"github.com/projsonal/gowms/pkg/utils"
+	"github.com/projsonal/gowms/pkg/wa"
 )
 
 const (

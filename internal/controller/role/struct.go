@@ -1,8 +1,8 @@
 package role
 
 import (
-	roleRepo "github.com/projsonal/gostock/internal/repositories/role"
-	"github.com/projsonal/gostock/pkg/utils"
+	roleRepo "github.com/projsonal/gowms/internal/repositories/role"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

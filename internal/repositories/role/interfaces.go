@@ -2,7 +2,7 @@
 // fondasi RBAC dinamis (matrix akses per modul per role).
 package role
 
-import "github.com/projsonal/gostock/internal/model"
+import "github.com/projsonal/gowms/internal/model"
 
 // Repository mendefinisikan seluruh operasi data untuk Role & Permission.
 // Method HasPermission juga dipakai middleware.PermissionChecker.

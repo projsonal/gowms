@@ -5,11 +5,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/internal/middleware"
-	"github.com/projsonal/gostock/internal/model"
-	barangRepo "github.com/projsonal/gostock/internal/repositories/barang"
-	"github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/middleware"
+	"github.com/projsonal/gowms/internal/model"
+	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
+	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 const Module = constant.ModuleKelolaBarang
@@ -36,7 +36,22 @@ func parseListFilter(c *fiber.Ctx) barangRepo.Filter {
 	}
 }
 
-// List GET /barang?page=&limit=&search=&kategori_id=&satuan_id=&stok_menipis=&status=
+// List godoc
+// @Summary      Daftar barang
+// @Description  Daftar barang dengan pagination & filter.
+// @Tags         Barang
+// @Produce      json
+// @Security     BearerAuth
+// @Param        page          query     int     false  "Halaman"     default(1)
+// @Param        limit         query     int     false  "Item per halaman"  default(10)
+// @Param        search        query     string  false  "Kata kunci pencarian"
+// @Param        kategori_id   query     int     false  "Filter kategori"
+// @Param        satuan_id     query     int     false  "Filter satuan"
+// @Param        stok_menipis  query     bool    false  "Hanya tampilkan stok menipis"
+// @Param        status        query     string  false  "aktif untuk hanya barang aktif"
+// @Success      200  {object}  utils.Envelope
+// @Failure      401  {object}  utils.Envelope
+// @Router       /stockrsd/barang [get]
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := parseListFilter(c)
@@ -48,7 +63,15 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar barang berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /barang/:id
+// Detail godoc
+// @Summary      Detail barang
+// @Tags         Barang
+// @Produce      json
+// @Security     BearerAuth
+// @Param        id   path      int  true  "ID barang"
+// @Success      200  {object}  utils.Envelope
+// @Failure      404  {object}  utils.Envelope
+// @Router       /stockrsd/barang/{id} [get]
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -71,7 +94,17 @@ func (h *Controller) validateReferensi(kategoriID, satuanID uint) error {
 	return nil
 }
 
-// Create POST /barang
+// Create godoc
+// @Summary      Tambah barang baru
+// @Tags         Barang
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        payload  body      BarangRequest  true  "Data barang"
+// @Success      201      {object}  utils.Envelope
+// @Failure      400      {object}  utils.Envelope
+// @Failure      409      {object}  utils.Envelope  "kode barang sudah dipakai"
+// @Router       /stockrsd/barang [post]
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req BarangRequest
 	if err := c.BodyParser(&req); err != nil {

@@ -5,11 +5,11 @@ package stock_opname
 import (
 	"time"
 
-	barangRepo "github.com/projsonal/gostock/internal/repositories/barang"
-	gudangRepo "github.com/projsonal/gostock/internal/repositories/gudang"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	soRepo "github.com/projsonal/gostock/internal/repositories/stockOpname"
-	"github.com/projsonal/gostock/pkg/utils"
+	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
+	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	soRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

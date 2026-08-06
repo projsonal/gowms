@@ -3,11 +3,11 @@ package pengiriman
 import (
 	"time"
 
-	barangKeluarRepo "github.com/projsonal/gostock/internal/repositories/barang_keluar"
-	gudangRepo "github.com/projsonal/gostock/internal/repositories/gudang"
-	pgRepo "github.com/projsonal/gostock/internal/repositories/pengiriman"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	"github.com/projsonal/gostock/pkg/utils"
+	barangKeluarRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
+	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	pgRepo "github.com/projsonal/gowms/internal/repositories/pengiriman"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

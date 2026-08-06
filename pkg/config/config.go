@@ -1,5 +1,3 @@
-// Package config memuat seluruh konfigurasi aplikasi StockRSD dari
-// environment variable (.env), dipakai oleh cmd/main.go sebagai composition root.
 package config
 
 import (
@@ -23,6 +21,7 @@ type Config struct {
 	WhatsApp WhatsAppConfig
 	WAOTP    WAOTPConfig
 	GeoIP    GeoIPConfig
+	Swagger  SwaggerConfig
 }
 
 type AppConfig struct {
@@ -96,6 +95,12 @@ type GeoIPConfig struct {
 	BaseURL string
 }
 
+type SwaggerConfig struct {
+	Enabled       bool
+	BasicAuthUser string
+	BasicAuthPass string
+}
+
 func Load() *Config {
 	_ = godotenv.Load()
 
@@ -150,6 +155,11 @@ func Load() *Config {
 		GeoIP: GeoIPConfig{
 			Enabled: getEnvAsBool("GEOIP_ENABLED", false),
 			BaseURL: getEnv("GEOIP_BASE_URL", "http://ip-api.com"),
+		},
+		Swagger: SwaggerConfig{
+			Enabled:       getEnvAsBool("SWAGGER_ENABLED", getEnv("APP_ENV", "development") != "production"),
+			BasicAuthUser: getEnv("SWAGGER_BASIC_AUTH_USER", ""),
+			BasicAuthPass: getEnv("SWAGGER_BASIC_AUTH_PASS", ""),
 		},
 	}
 }

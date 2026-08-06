@@ -3,12 +3,12 @@ package users
 import (
 	"time"
 
-	"github.com/projsonal/gostock/internal/repositories/role"
-	"github.com/projsonal/gostock/internal/repositories/users"
-	"github.com/projsonal/gostock/pkg/config"
-	"github.com/projsonal/gostock/pkg/otp"
-	"github.com/projsonal/gostock/pkg/utils"
-	"github.com/projsonal/gostock/pkg/wa"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	"github.com/projsonal/gowms/internal/repositories/users"
+	"github.com/projsonal/gowms/pkg/config"
+	"github.com/projsonal/gowms/pkg/otp"
+	"github.com/projsonal/gowms/pkg/utils"
+	"github.com/projsonal/gowms/pkg/wa"
 )
 
 // Controller menangani endpoint HTTP modul Manajemen User & Settings.

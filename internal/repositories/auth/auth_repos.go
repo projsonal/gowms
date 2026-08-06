@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"github.com/projsonal/gostock/internal/model"
+	"github.com/projsonal/gowms/internal/model"
 	"gorm.io/gorm"
 )
 

@@ -3,10 +3,10 @@ package purchase_order
 import (
 	"time"
 
-	poRepo "github.com/projsonal/gostock/internal/repositories/po"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	supplierRepo "github.com/projsonal/gostock/internal/repositories/supplier"
-	"github.com/projsonal/gostock/pkg/utils"
+	poRepo "github.com/projsonal/gowms/internal/repositories/po"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

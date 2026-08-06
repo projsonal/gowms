@@ -3,8 +3,8 @@ package maintenance
 import (
 	"time"
 
-	maintenanceRepo "github.com/projsonal/gostock/internal/repositories/maintenance"
-	"github.com/projsonal/gostock/pkg/utils"
+	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

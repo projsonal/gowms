@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/projsonal/gostock/internal/routes"
-	"github.com/projsonal/gostock/pkg/config"
+	"github.com/projsonal/gowms/internal/routes"
+	"github.com/projsonal/gowms/pkg/config"
 )
 
 func main() {

@@ -10,10 +10,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 
-	"github.com/projsonal/gostock/internal/middleware"
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/middleware"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 const (
@@ -105,6 +105,17 @@ func (h *Controller) resolveRegisterRoleName(requestedRole string) string {
 	return requestedRole
 }
 
+// Register godoc
+// @Summary      Registrasi akun baru
+// @Description  Mendaftarkan user baru. Wajib menyertakan token & jawaban captcha yang valid.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        payload  body      RegisterRequest  true  "Data registrasi"
+// @Success      201      {object}  utils.Envelope{data=LoginResponse}
+// @Failure      400      {object}  utils.Envelope  "captcha gagal / payload tidak valid"
+// @Failure      409      {object}  utils.Envelope  "username/email sudah dipakai"
+// @Router       /stockrsd/auth/register [post]
 func (h *Controller) Register(c *fiber.Ctx) error {
 	var req RegisterRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -159,6 +170,18 @@ func (h *Controller) Register(c *fiber.Ctx) error {
 	})
 }
 
+// Login godoc
+// @Summary      Login
+// @Description  Login dengan username & password. Jika 2FA belum aktif, respons meminta setup 2FA; jika sudah aktif, meminta verifikasi OTP.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        payload  body      LoginRequest  true  "Kredensial login"
+// @Success      200      {object}  utils.Envelope{data=LoginResponse}
+// @Failure      401      {object}  utils.Envelope  "username/password salah"
+// @Failure      403      {object}  utils.Envelope  "akun tidak aktif"
+// @Failure      429      {object}  utils.Envelope  "akun terkunci sementara"
+// @Router       /stockrsd/auth/login [post]
 func (h *Controller) Login(c *fiber.Ctx) error {
 	var req LoginRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -326,6 +349,16 @@ func (h *Controller) VerifyOTP(c *fiber.Ctx) error {
 	return utils.OK(c, "Verifikasi OTP Berhasil", res)
 }
 
+// RefreshToken godoc
+// @Summary      Perbarui access token
+// @Description  Tukar refresh token yang masih valid dengan pasangan access+refresh token baru.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        payload  body      RefreshTokenRequest  true  "Refresh token"
+// @Success      200      {object}  utils.Envelope{data=LoginResponse}
+// @Failure      401      {object}  utils.Envelope  "refresh token tidak valid/kedaluwarsa/di-revoke"
+// @Router       /stockrsd/auth/refresh [post]
 func (h *Controller) RefreshToken(c *fiber.Ctx) error {
 	var req RefreshTokenRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -354,6 +387,15 @@ func (h *Controller) RefreshToken(c *fiber.Ctx) error {
 	return utils.OK(c, "token berhasil diperbarui", res)
 }
 
+// Logout godoc
+// @Summary      Logout
+// @Description  Revoke seluruh sesi/refresh token milik user yang sedang login.
+// @Tags         Auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  utils.Envelope
+// @Failure      401  {object}  utils.Envelope
+// @Router       /stockrsd/auth/logout [post]
 func (h *Controller) Logout(c *fiber.Ctx) error {
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 	if err := h.authRepo.RevokeAllUserTokens(userID); err != nil {
@@ -414,6 +456,15 @@ func (h *Controller) RevokeSession(c *fiber.Ctx) error {
 	return utils.OK(c, "sesi berhasil dicabut", nil)
 }
 
+// Me godoc
+// @Summary      Profil user aktif
+// @Description  Mengambil data user yang sedang login berdasarkan access token.
+// @Tags         Auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  utils.Envelope{data=MeResponse}
+// @Failure      401  {object}  utils.Envelope
+// @Router       /stockrsd/auth/me [get]
 func (h *Controller) Me(c *fiber.Ctx) error {
 	userID, ok := c.Locals(constant.CtxUserID).(uint)
 	if !ok {

@@ -3,7 +3,7 @@ package role
 import (
 	"gorm.io/gorm"
 
-	"github.com/projsonal/gostock/internal/model"
+	"github.com/projsonal/gowms/internal/model"
 )
 
 func (r *repository) FindAll() ([]model.Role, error) {

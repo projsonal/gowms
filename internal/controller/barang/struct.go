@@ -1,10 +1,10 @@
 package barang
 
 import (
-	barangRepo "github.com/projsonal/gostock/internal/repositories/barang"
-	gudangRepo "github.com/projsonal/gostock/internal/repositories/gudang"
-	"github.com/projsonal/gostock/internal/repositories/role"
-	"github.com/projsonal/gostock/pkg/utils"
+	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
+	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	"github.com/projsonal/gowms/internal/repositories/role"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {

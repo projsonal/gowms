@@ -2,7 +2,7 @@
 // self-hosted (lihat pkg/captcha untuk implementasi generate/verify-nya).
 package captcha
 
-import "github.com/projsonal/gostock/pkg/captcha"
+import "github.com/projsonal/gowms/pkg/captcha"
 
 // Controller menangani endpoint HTTP untuk generate CAPTCHA.
 type Controller struct {

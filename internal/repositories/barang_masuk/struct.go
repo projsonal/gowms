@@ -3,7 +3,7 @@ package barang_masuk
 import (
 	"gorm.io/gorm"
 
-	poRepo "github.com/projsonal/gostock/internal/repositories/po"
+	poRepo "github.com/projsonal/gowms/internal/repositories/po"
 )
 
 type repository struct {

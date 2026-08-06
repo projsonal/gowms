@@ -5,10 +5,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/config"
-	"github.com/projsonal/gostock/pkg/constant"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/config"
+	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/utils"
 	"gorm.io/gorm"
 )
 

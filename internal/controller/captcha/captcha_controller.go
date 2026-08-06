@@ -3,7 +3,7 @@ package captcha
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 // Generate GET /api/v1/captcha — mengembalikan captcha_token (dipakai lagi

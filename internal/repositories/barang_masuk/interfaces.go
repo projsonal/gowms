@@ -1,8 +1,8 @@
 package barang_masuk
 
 import (
-	"github.com/projsonal/gostock/internal/model"
-	"github.com/projsonal/gostock/pkg/utils"
+	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Filter struct {
