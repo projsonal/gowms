@@ -8,6 +8,8 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
+const dashboardDateFormat = "2006-01-02"
+
 type CourierStats struct {
 	Nama         string  `json:"nama"`
 	Total        int64   `json:"total"`
@@ -135,8 +137,8 @@ func (h *Controller) ReportPreview(c *fiber.Ctx) error {
 	}
 	return utils.OK(c, "preview laporan", fiber.Map{
 		"jenis": jenis,
-		"from":  from.Format("2006-01-02"),
-		"to":    to.Format("2006-01-02"),
+		"from":  from.Format(dashboardDateFormat),
+		"to":    to.Format(dashboardDateFormat),
 		"count": len(rows),
 		"rows":  rows,
 	})

@@ -11,6 +11,10 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
+const dateFormat = "2006-01-02"
+const prettyDateFormat = "02 Jan 2006"
+const contentTypeHeader = "Content-Type"
+
 func (h *Controller) ReportExport(c *fiber.Ctx) error {
 	jenis := c.Params("jenis")
 	format := c.Query("format", "pdf")
@@ -73,14 +77,14 @@ func (h *Controller) ReportExport(c *fiber.Ctx) error {
 	}
 
 	title := prettyTitle(jenis)
-	filename := fmt.Sprintf("%s_%s_%s", jenis, from.Format("2006-01-02"), to.Format("2006-01-02"))
+	filename := fmt.Sprintf("%s_%s_%s", jenis, from.Format(dateFormat), to.Format(dateFormat))
 
 	if format == "excel" || format == "xlsx" {
 		f := excelize.NewFile()
 		sheet := "Laporan"
 		f.SetSheetName("Sheet1", sheet)
 		f.SetCellValue(sheet, "A1", title)
-		f.SetCellValue(sheet, "A2", fmt.Sprintf("Periode: %s s/d %s", from.Format("2006-01-02"), to.Format("2006-01-02")))
+		f.SetCellValue(sheet, "A2", fmt.Sprintf("Periode: %s s/d %s", from.Format(dateFormat), to.Format(dateFormat)))
 		f.SetCellValue(sheet, "A3", fmt.Sprintf("Total: %d record", len(rows)))
 		f.SetCellValue(sheet, "A5", "No.")
 		f.SetCellValue(sheet, "B5", "Nomor")
@@ -105,7 +109,7 @@ func (h *Controller) ReportExport(c *fiber.Ctx) error {
 		if err := f.Write(&buf); err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat Excel: "+err.Error(), nil)
 		}
-		c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		c.Set(contentTypeHeader, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 		c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.xlsx"`, filename))
 		return c.Send(buf.Bytes())
 	}
@@ -128,11 +132,11 @@ func (h *Controller) ReportExport(c *fiber.Ctx) error {
 	}
 	html := renderReportHTML(title, from, to, shared)
 	if format == "pdf" {
-		c.Set("Content-Type", "text/html; charset=utf-8")
+		c.Set(contentTypeHeader, "text/html; charset=utf-8")
 		c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s.html"`, filename))
 		return c.SendString(html)
 	}
-	c.Set("Content-Type", "text/html; charset=utf-8")
+	c.Set(contentTypeHeader, "text/html; charset=utf-8")
 	return c.SendString(html)
 }
 
@@ -153,10 +157,6 @@ func prettyTitle(jenis string) string {
 	return "Laporan"
 }
 
-type reportRow interface {
-	entryRow() (string, time.Time, string, string, int64)
-}
-
 func renderReportHTML(title string, from, to time.Time, rows []struct {
 	Nomor   string
 	Tanggal time.Time
@@ -166,7 +166,9 @@ func renderReportHTML(title string, from, to time.Time, rows []struct {
 }) string {
 	var b bytes.Buffer
 	b.WriteString(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">`)
-	b.WriteString(`<title>` + title + `</title>`)
+	b.WriteString(`<title>`)
+	b.WriteString(title)
+	b.WriteString(`</title>`)
 	b.WriteString(`<style>
 	  * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 	  body { margin: 40px; color: #2b211d; }
@@ -186,17 +188,23 @@ func renderReportHTML(title string, from, to time.Time, rows []struct {
 	  footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #f0dad2; font-size: 10px; color: #8a7b74; text-align: center; }
 	  @media print { body { margin: 20px; } header { page-break-inside: avoid; } .no-print { display: none; } }
 	</style></head><body>`)
-	b.WriteString(`<header><div class="brand"><div class="brand-badge">S</div><div><h1>` + title + `</h1><div style="font-size:12px;color:#8a7b74">StokRSD Warehouse Management System</div></div></div><div style="text-align:right;font-size:11px;color:#8a7b74">Dicetak: ` + time.Now().Format("02 Jan 2006 15:04") + `</div></header>`)
-	b.WriteString(`<div class="meta"><strong>Periode:</strong> ` + from.Format("02 Jan 2006") + ` s/d ` + to.Format("02 Jan 2006") + ` &nbsp;&middot;&nbsp; <strong>Total record:</strong> ` + fmt.Sprintf("%d", len(rows)) + `</div>`)
+	b.WriteString(`<header><div class="brand"><div class="brand-badge">S</div><div><h1>`)
+	b.WriteString(title)
+	b.WriteString(`</h1><div style="font-size:12px;color:#8a7b74">StokRSD Warehouse Management System</div></div></div><div style="text-align:right;font-size:11px;color:#8a7b74">Dicetak: `)
+	b.WriteString(time.Now().Format("02 Jan 2006 15:04"))
+	b.WriteString(`</div></header>`)
+	b.WriteString(fmt.Sprintf(`<div class="meta"><strong>Periode:</strong> %s s/d %s &nbsp;&middot;&nbsp; <strong>Total record:</strong> %d</div>`, from.Format(prettyDateFormat), to.Format(prettyDateFormat), len(rows)))
 	b.WriteString(`<table><thead><tr><th style="width:40px">No</th><th>Nomor</th><th>Tanggal</th><th>Info</th><th>Status</th><th style="text-align:right">Qty/Total</th></tr></thead><tbody>`)
 	for i, r := range rows {
 		statusClass := "status-" + r.Status
-		b.WriteString(`<tr><td>` + fmt.Sprintf("%d", i+1) + `</td>`)
-		b.WriteString(`<td style="font-family:monospace;font-weight:600">` + r.Nomor + `</td>`)
-		b.WriteString(`<td>` + r.Tanggal.Format("02 Jan 2006") + `</td>`)
-		b.WriteString(`<td>` + r.Info + `</td>`)
-		b.WriteString(`<td class="` + statusClass + `">` + r.Status + `</td>`)
-		b.WriteString(`<td style="text-align:right">` + fmt.Sprintf("%d", r.Qty) + `</td></tr>`)
+		b.WriteString(fmt.Sprintf(`<tr><td>%d</td><td style="font-family:monospace;font-weight:600">%s</td><td>%s</td><td>%s</td><td class="%s">%s</td><td style="text-align:right">%d</td></tr>`,
+			i+1,
+			r.Nomor,
+			r.Tanggal.Format(prettyDateFormat),
+			r.Info,
+			statusClass,
+			r.Status,
+			r.Qty))
 	}
 	if len(rows) == 0 {
 		b.WriteString(`<tr><td colspan="6" style="text-align:center;padding:24px;color:#8a7b74">Tidak ada data pada periode ini</td></tr>`)

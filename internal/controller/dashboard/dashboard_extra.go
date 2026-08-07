@@ -128,12 +128,21 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 		args = append(args, since, since, since, since, since)
 	}
 	_ = sinceFilter
+	// Untuk barang_masuk & barang_keluar, karyawan HANYA perlu diberi tahu
+	// saat statusnya sudah "selesai" (disetujui admin/super_admin lewat
+	// endpoint PATCH .../selesai — lihat middleware `edit` di RegisterRoutes,
+	// karyawan biasanya tidak punya izin `edit` sehingga transisi status ini
+	// pasti dilakukan admin/super_admin). Dipakai `completed_at`, BUKAN
+	// `created_at`, supaya notifikasi muncul saat disetujui, bukan saat
+	// pertama kali diinput oleh karyawan.
 	q := `
-	  SELECT 'bm-' || bm.id::text AS id, 'Barang Masuk Baru' AS title, bm.nomor_penerimaan AS body, 'in' AS kind, bm.created_at
-	  FROM barang_masuk bm ` + optWhere(!since.IsZero()) + `
+	  SELECT 'bm-' || bm.id::text AS id, 'Barang Masuk Disetujui' AS title, bm.nomor_penerimaan AS body, 'in_approved' AS kind, bm.completed_at AS created_at
+	  FROM barang_masuk bm
+	  WHERE bm.status = 'selesai' AND bm.completed_at IS NOT NULL ` + optAnd(!since.IsZero(), "bm.completed_at") + `
 	  UNION ALL
-	  SELECT 'bk-' || bk.id::text, 'Barang Keluar', bk.nomor_pengeluaran, 'out', bk.created_at
-	  FROM barang_keluar bk ` + optWhere(!since.IsZero()) + `
+	  SELECT 'bk-' || bk.id::text, 'Barang Keluar Disetujui', bk.nomor_pengeluaran, 'out_approved', bk.completed_at
+	  FROM barang_keluar bk
+	  WHERE bk.status = 'selesai' AND bk.completed_at IS NOT NULL ` + optAnd(!since.IsZero(), "bk.completed_at") + `
 	  UNION ALL
 	  SELECT 'pg-' || pg.id::text, CASE WHEN pg.status='Terkirim' THEN 'Pengiriman Selesai' ELSE 'Pengiriman' END, pg.nomor_pengiriman, 'ship', pg.created_at
 	  FROM pengiriman pg ` + optWhere(!since.IsZero()) + `
@@ -166,6 +175,16 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 func optWhere(with bool) string {
 	if with {
 		return "WHERE created_at > ?"
+	}
+	return ""
+}
+
+// optAnd sama seperti optWhere, tapi untuk ditambahkan setelah klausa WHERE
+// yang sudah ada (bm.status = 'selesai' dst.) dan bisa memakai kolom lain
+// selain created_at (di sini: completed_at).
+func optAnd(with bool, column string) string {
+	if with {
+		return "AND " + column + " > ?"
 	}
 	return ""
 }
