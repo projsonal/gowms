@@ -1,6 +1,9 @@
 package reportexport
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/xuri/excelize/v2"
 )
 
@@ -16,7 +19,7 @@ func sanitizeSheetName(title string) string {
 	return title
 }
 
-func ToExcel(title string, headers []string, rows [][]string) ([]byte, error) {
+func ToExcel(title string, summary [][2]string, headers []string, rows [][]string) ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close()
 
@@ -25,13 +28,59 @@ func ToExcel(title string, headers []string, rows [][]string) ([]byte, error) {
 		return nil, err
 	}
 
+	// Catatan: pengaturan page-layout (ukuran kertas/orientasi cetak)
+	// SENGAJA tidak diset lewat API di sini — versi excelize yang dipakai
+	// belum bisa dipastikan cocok tanpa akses toolchain Go di lingkungan
+	// pengembangan ini (lihat catatan verifikasi build di ringkasan).
+	// Excel/LibreOffice tetap bisa mengatur cetak A4 potrait manual dari
+	// dialog Page Setup — konten (kop surat WMS-RSD & ringkasan) yang
+	// lebih penting sudah tetap ada di baris pertama sheet ini.
+
 	boldStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
 	if err != nil {
 		return nil, err
 	}
+	titleStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true, Size: 14, Color: "146C14"}})
+	if err != nil {
+		return nil, err
+	}
 
+	row := 1
+	if err := f.SetCellValue(sheet, fmt.Sprintf("A%d", row), "WMS-RSD — "+title); err != nil {
+		return nil, err
+	}
+	if err := f.SetCellStyle(sheet, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), titleStyle); err != nil {
+		return nil, err
+	}
+	row++
+	if err := f.SetCellValue(sheet, fmt.Sprintf("A%d", row), "Dicetak: "+time.Now().Format("2 January 2006 15:04")+" WIB"); err != nil {
+		return nil, err
+	}
+	row += 2
+
+	if len(summary) > 0 {
+		if err := f.SetCellValue(sheet, fmt.Sprintf("A%d", row), "Ringkasan"); err != nil {
+			return nil, err
+		}
+		if err := f.SetCellStyle(sheet, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), boldStyle); err != nil {
+			return nil, err
+		}
+		row++
+		for _, kv := range summary {
+			if err := f.SetCellValue(sheet, fmt.Sprintf("A%d", row), kv[0]); err != nil {
+				return nil, err
+			}
+			if err := f.SetCellValue(sheet, fmt.Sprintf("B%d", row), kv[1]); err != nil {
+				return nil, err
+			}
+			row++
+		}
+		row++
+	}
+
+	headerRow := row
 	for i, h := range headers {
-		cell, err := excelize.CoordinatesToCellName(i+1, 1)
+		cell, err := excelize.CoordinatesToCellName(i+1, headerRow)
 		if err != nil {
 			return nil, err
 		}
@@ -43,9 +92,9 @@ func ToExcel(title string, headers []string, rows [][]string) ([]byte, error) {
 		}
 	}
 
-	for r, row := range rows {
-		for c, val := range row {
-			cell, err := excelize.CoordinatesToCellName(c+1, r+2)
+	for r, dataRow := range rows {
+		for c, val := range dataRow {
+			cell, err := excelize.CoordinatesToCellName(c+1, headerRow+1+r)
 			if err != nil {
 				return nil, err
 			}

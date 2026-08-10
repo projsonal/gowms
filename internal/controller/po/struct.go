@@ -29,10 +29,16 @@ type ItemRequest struct {
 }
 
 type PORequest struct {
-	SupplierID       uint          `json:"supplier_id" validate:"required"`
-	TanggalPO        time.Time     `json:"tanggal_po" validate:"required"`
+	SupplierID uint `json:"supplier_id" validate:"required"`
+	// TanggalPO: string "YYYY-MM-DD" — lihat catatan lengkap di
+	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal.
+	TanggalPO        string        `json:"tanggal_po" validate:"required"`
 	CatatanPengajuan string        `json:"catatan_pengajuan" validate:"max=255"`
 	Items            []ItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+func parseTanggalHarian(raw string) (time.Time, error) {
+	return time.Parse("2006-01-02", raw)
 }
 
 type SetujuiTolakRequest struct {

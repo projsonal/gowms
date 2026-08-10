@@ -12,6 +12,7 @@ type Supplier struct {
 	Alamat    string    `json:"alamat" gorm:"size:255"`
 	NPWP      *string   `json:"npwp" gorm:"size:25"`
 	IsActive  bool      `json:"is_active" gorm:"not null;default:true"`
+	IsProtected bool    `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin — lihat internal/controller/supplier Protect()
 	Catatan   string    `json:"catatan" gorm:"size:255"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

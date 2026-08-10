@@ -31,7 +31,7 @@ func mintHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user not found: "+err.Error(), 404)
 		return
 	}
-	access, err := jwtSvc.GenerateAccessToken(u.ID, u.RoleID, u.Role.Name)
+	access, err := jwtSvc.GenerateAccessToken(u.ID, u.RoleID, u.RoleID, u.Role.Name)
 	if err != nil {
 		http.Error(w, "issue: "+err.Error(), 500)
 		return

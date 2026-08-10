@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/projsonal/gowms/internal/model"
 	"gorm.io/gorm"
 )
@@ -33,6 +35,25 @@ func (r *repository) ListActiveSessions(userID uint) ([]model.RefreshToken, erro
 		Order("created_at DESC").
 		Find(&sessions).Error
 	return sessions, err
+}
+
+func (r *repository) OnlineUserIDs(userIDs []uint) (map[uint]bool, error) {
+	result := make(map[uint]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	var onlineIDs []uint
+	err := r.db.Model(&model.RefreshToken{}).
+		Distinct("user_id").
+		Where("user_id IN ? AND revoked = false AND expires_at > ?", userIDs, time.Now()).
+		Pluck("user_id", &onlineIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range onlineIDs {
+		result[id] = true
+	}
+	return result, nil
 }
 
 func (r *repository) RevokeSession(userID, sessionID uint) error {

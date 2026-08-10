@@ -2,18 +2,90 @@ package reportexport
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/jung-kurt/gofpdf"
 )
 
-func ToPDF(title string, headers []string, rows [][]string) ([]byte, error) {
-	pdf := gofpdf.New("L", "mm", "A4", "")
+// Kop surat WMS-RSD: pita hijau tua di atas & bawah tiap halaman, meniru
+// gaya kop surat resmi perusahaan (lihat referensi Kopsurat_RSD.docx) tapi
+// dengan nama aplikasi "WMS-RSD" alih-alih nama PT.
+var (
+	headerBandColor  = [3]int{20, 60, 20}  // hijau tua
+	headerAccentColor = [3]int{90, 200, 60} // hijau terang (aksen garis diagonal)
+	footerTextColor  = [3]int{255, 255, 255}
+)
+
+func drawLetterhead(pdf *gofpdf.Fpdf, reportTitle string) {
+	pageWidth, _ := pdf.GetPageSize()
+
+	// Pita header hijau tua penuh lebar halaman.
+	pdf.SetFillColor(headerBandColor[0], headerBandColor[1], headerBandColor[2])
+	pdf.Rect(0, 0, pageWidth, 20, "F")
+	// Aksen garis diagonal khas kop surat referensi (disederhanakan jadi
+	// beberapa garis miring hijau terang di ujung kanan pita).
+	pdf.SetDrawColor(headerAccentColor[0], headerAccentColor[1], headerAccentColor[2])
+	pdf.SetLineWidth(1.2)
+	for i := 0; i < 3; i++ {
+		x := pageWidth - 30 + float64(i)*6
+		pdf.Line(x, 0, x-8, 20)
+	}
+
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetFont("Arial", "B", 16)
+	pdf.SetXY(10, 4)
+	pdf.CellFormat(pageWidth-20, 8, "WMS-RSD", "", 1, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.SetX(10)
+	pdf.CellFormat(pageWidth-20, 6, "Warehouse Management System - RSD", "", 1, "L", false, 0, "")
+
+	pdf.SetTextColor(0, 0, 0)
+	pdf.SetY(26)
+	pdf.SetFont("Arial", "B", 13)
+	pdf.CellFormat(0, 8, reportTitle, "", 1, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 8)
+	pdf.SetTextColor(90, 90, 90)
+	pdf.CellFormat(0, 5, "Dicetak: "+time.Now().Format("2 January 2006 15:04")+" WIB", "", 1, "L", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+	pdf.Ln(2)
+}
+
+func drawFooterBand(pdf *gofpdf.Fpdf) {
+	pageWidth, pageHeight := pdf.GetPageSize()
+	bandY := pageHeight - 14
+	pdf.SetFillColor(headerBandColor[0], headerBandColor[1], headerBandColor[2])
+	pdf.Rect(0, bandY, pageWidth, 14, "F")
+	pdf.SetTextColor(footerTextColor[0], footerTextColor[1], footerTextColor[2])
+	pdf.SetFont("Arial", "", 8)
+	pdf.SetXY(10, bandY+4)
+	pdf.CellFormat(pageWidth-20, 6, "www.wms-rsd.internal - Dokumen ini dihasilkan otomatis oleh sistem WMS-RSD", "", 0, "L", false, 0, "")
+	pdf.SetTextColor(0, 0, 0)
+}
+
+// ToPDF membuat laporan PDF A4 POTRAIT dengan kop surat WMS-RSD di setiap
+// halaman, ringkasan (summary [label,value]) sebelum tabel rincian — supaya
+// data di luar tabel (total, agregat, dst — setara "chart data" di UI) ikut
+// terbawa ke file yang diunduh, bukan cuma isi tabel rincian.
+func ToPDF(title string, summary [][2]string, headers []string, rows [][]string) ([]byte, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetTitle(title, false)
+	pdf.SetAutoPageBreak(true, 22)
+	pdf.SetHeaderFunc(func() { drawLetterhead(pdf, title) })
+	pdf.SetFooterFunc(func() { drawFooterBand(pdf) })
 	pdf.AddPage()
 
-	pdf.SetFont("Arial", "B", 14)
-	pdf.CellFormat(0, 10, title, "", 1, "L", false, 0, "")
-	pdf.Ln(2)
+	if len(summary) > 0 {
+		pdf.SetFont("Arial", "B", 10)
+		pdf.CellFormat(0, 7, "Ringkasan", "", 1, "L", false, 0, "")
+		pdf.SetFont("Arial", "", 9)
+		for _, kv := range summary {
+			pdf.SetFont("Arial", "B", 9)
+			pdf.CellFormat(45, 6, kv[0], "", 0, "L", false, 0, "")
+			pdf.SetFont("Arial", "", 9)
+			pdf.CellFormat(0, 6, kv[1], "", 1, "L", false, 0, "")
+		}
+		pdf.Ln(3)
+	}
 
 	pageWidth, _ := pdf.GetPageSize()
 	marginL, _, marginR, _ := pdf.GetMargins()
@@ -23,14 +95,14 @@ func ToPDF(title string, headers []string, rows [][]string) ([]byte, error) {
 		colWidth = usable / float64(len(headers))
 	}
 
-	pdf.SetFont("Arial", "B", 9)
+	pdf.SetFont("Arial", "B", 8)
 	pdf.SetFillColor(230, 230, 230)
 	for _, h := range headers {
 		pdf.CellFormat(colWidth, 8, h, "1", 0, "C", true, 0, "")
 	}
 	pdf.Ln(-1)
 
-	pdf.SetFont("Arial", "", 8)
+	pdf.SetFont("Arial", "", 7.5)
 	for _, row := range rows {
 		for _, val := range row {
 			pdf.CellFormat(colWidth, 7, val, "1", 0, "L", false, 0, "")

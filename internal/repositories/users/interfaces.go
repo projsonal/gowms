@@ -16,6 +16,7 @@ type Repository interface {
 	FindByEmail(email string) (*model.User, error)
 	Create(u *model.User) error
 	Update(u *model.User) error
+	Delete(id uint) error
 	UpdateTOTPSecret(userID uint, secret string, enabled bool) error
 	UpdateLastLogin(userID uint) error
 	List(p utils.PaginationParams) ([]model.User, int64, error)

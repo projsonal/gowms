@@ -53,3 +53,25 @@ func RequestLogger() fiber.Handler {
 func Recover() fiber.Handler {
 	return recover.New()
 }
+
+// SecurityHeaders memasang header keamanan standar (mirip praktik yang
+// direkomendasikan Clerk & OWASP untuk aplikasi Next.js+API terpisah):
+// mencegah clickjacking, MIME-sniffing, membatasi info Referrer, dan
+// menonaktifkan fitur browser yang tidak dipakai API ini.
+// CSP di sini sengaja ketat (API JSON murni, tidak pernah merender HTML)
+// supaya kalaupun ada endpoint yang keliru me-reflect input sebagai HTML,
+// browser tetap menolak mengeksekusinya sebagai skrip (mitigasi XSS).
+func SecurityHeaders() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("X-Frame-Options", "DENY")
+		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		c.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		c.Set("X-XSS-Protection", "0") // header lawas ini bisa jadi vektor sendiri di browser lama; matikan eksplisit, andalkan CSP
+		if c.Protocol() == "https" {
+			c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+		}
+		return c.Next()
+	}
+}

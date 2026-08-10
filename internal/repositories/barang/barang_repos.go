@@ -20,6 +20,13 @@ func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
 	if f.OnlyActive {
 		q = q.Where("is_active = ?", true)
 	}
+	if len(f.ApprovalStatuses) > 0 {
+		if f.OrSubmittedBy != 0 {
+			q = q.Where("approval_status IN ? OR diajukan_oleh = ?", f.ApprovalStatuses, f.OrSubmittedBy)
+		} else {
+			q = q.Where("approval_status IN ?", f.ApprovalStatuses)
+		}
+	}
 	return q
 }
 

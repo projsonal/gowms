@@ -24,6 +24,13 @@ type BarangRequest struct {
 	KategoriID  uint   `json:"kategori_id" validate:"required"`
 	SatuanID    uint   `json:"satuan_id" validate:"required"`
 	HargaBeli   int64  `json:"harga_beli" validate:"min=0"`
+	// Stok — stok AWAL saat membuat SKU baru (mis. mendigitalisasi barang
+	// yang sudah ada fisiknya di gudang sebelum sistem ini dipakai), atau
+	// koreksi manual saat Ubah Barang (mis. hasil stok opname). Untuk
+	// penambahan/pengurangan stok yang terikat transaksi (Barang Masuk/
+	// Keluar), tetap pakai PATCH /:id/adjust supaya riwayatnya tercatat —
+	// field ini untuk set NILAI ABSOLUT, bukan menambah/mengurangi.
+	Stok        int    `json:"stok" validate:"min=0"`
 	StokMinimum int    `json:"stok_minimum" validate:"min=0"`
 	Deskripsi   string `json:"deskripsi" validate:"max=255"`
 }
@@ -38,6 +45,18 @@ type AdjustStokRequest struct {
 // menghapus data barang, supaya histori transaksi lama tetap valid.
 type UpdateStatusRequest struct {
 	IsActive *bool `json:"is_active" validate:"required"`
+}
+
+// ProtectRequest — form aksi "Protect" di action bar tabel (khusus
+// super_admin, lihat RegisterRoutes). Sama polanya dengan modul COD.
+type ProtectRequest struct {
+	IsProtected *bool `json:"is_protected" validate:"required"`
+}
+
+// RejectRequest — form aksi "Reject" saat super_admin menolak pengajuan
+// barang dari admin (lihat model.Barang.ApprovalStatus).
+type RejectRequest struct {
+	Catatan string `json:"catatan" validate:"required,min=3"`
 }
 
 // SummaryResponse — kartu "Total Barang | Stok Menipis | Total Nilai

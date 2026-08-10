@@ -87,6 +87,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggal, err := parseTanggalHarian(req.Tanggal)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.gudangRepo.FindGudangByID(req.GudangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
@@ -98,7 +102,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		NomorOpname: generateNomorSO(),
 		GudangID:    req.GudangID,
 		Status:      constant.StatusSODraft,
-		Tanggal:     req.Tanggal,
+		Tanggal:     tanggal,
 		Catatan:     req.Catatan,
 	}
 	if err := h.repo.Create(so, toItemInputs(req.Items)); err != nil {
@@ -133,6 +137,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggal, err := parseTanggalHarian(req.Tanggal)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.gudangRepo.FindGudangByID(req.GudangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
@@ -141,7 +149,7 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	}
 
 	so.GudangID = req.GudangID
-	so.Tanggal = req.Tanggal
+	so.Tanggal = tanggal
 	so.Catatan = req.Catatan
 	if err := h.repo.Update(so, toItemInputs(req.Items)); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui dokumen stock opname", nil)
@@ -213,13 +221,14 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
-	g.Delete("/:id", edit, h.Delete)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/selesai", edit, h.Complete)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
 }

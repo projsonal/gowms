@@ -30,11 +30,18 @@ type ItemRequest struct {
 }
 
 type BKRequest struct {
-	GudangID  uint          `json:"gudang_id" validate:"required"`
-	Tanggal   time.Time     `json:"tanggal" validate:"required"`
+	GudangID uint `json:"gudang_id" validate:"required"`
+	// Tanggal: string "YYYY-MM-DD" — lihat catatan lengkap di
+	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal soal
+	// kenapa ini WAJIB string, bukan time.Time langsung.
+	Tanggal   string        `json:"tanggal" validate:"required"`
 	Keperluan string        `json:"keperluan" validate:"required,max=255"`
 	Penerima  string        `json:"penerima" validate:"max=150"`
 	Items     []ItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+func parseTanggalHarian(raw string) (time.Time, error) {
+	return time.Parse("2006-01-02", raw)
 }
 
 type SummaryResponse struct {

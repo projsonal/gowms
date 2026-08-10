@@ -31,6 +31,12 @@ type UpdateStatusRequest struct {
 	IsActive *bool `json:"is_active" validate:"required"`
 }
 
+// ProtectRequest — form aksi "Protect" di action bar tabel (khusus
+// super_admin, lihat RegisterRoutes). Sama polanya dengan modul COD/Barang.
+type ProtectRequest struct {
+	IsProtected *bool `json:"is_protected" validate:"required"`
+}
+
 type SummaryResponse struct {
 	TotalSupplier int64 `json:"total_supplier"`
 	SupplierAktif int64 `json:"supplier_aktif"`

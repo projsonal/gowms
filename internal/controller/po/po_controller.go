@@ -73,6 +73,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggalPO, err := parseTanggalHarian(req.TanggalPO)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.supplierRepo.FindByID(req.SupplierID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "supplier tidak ditemukan", nil)
 	}
@@ -81,7 +85,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		NomorPO:          generateNomorPO(),
 		SupplierID:       req.SupplierID,
 		Status:           constant.StatusPODraft,
-		TanggalPO:        req.TanggalPO,
+		TanggalPO:        tanggalPO,
 		CatatanPengajuan: req.CatatanPengajuan,
 		Items:            toItemModels(req.Items),
 	}
@@ -117,12 +121,16 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggalPO, err := parseTanggalHarian(req.TanggalPO)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.supplierRepo.FindByID(req.SupplierID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "supplier tidak ditemukan", nil)
 	}
 
 	po.SupplierID = req.SupplierID
-	po.TanggalPO = req.TanggalPO
+	po.TanggalPO = tanggalPO
 	po.CatatanPengajuan = req.CatatanPengajuan
 	if err := h.repo.Update(po, toItemModels(req.Items)); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui purchase order", nil)
@@ -216,13 +224,14 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
 	approval := middleware.RequirePermission(h.roleRepo, Module, constant.ActionApprovalReject)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
-	g.Delete("/:id", edit, h.Delete)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/ajukan", edit, h.Ajukan)
 	g.Patch("/:id/approval", approval, h.SetujuiTolak)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)

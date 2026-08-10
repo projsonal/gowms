@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +21,8 @@ type Config struct {
 	BotCheck BotCheckConfig
 	WhatsApp WhatsAppConfig
 	WAOTP    WAOTPConfig
+	SMS      SMSConfig
+	PasswordReset PasswordResetConfig
 	GeoIP    GeoIPConfig
 	Swagger  SwaggerConfig
 }
@@ -29,6 +32,12 @@ type AppConfig struct {
 	Env  string
 	Host string
 	Port string
+	// TrustedProxies: daftar IP/CIDR reverse proxy tepercaya (nginx) yang
+	// boleh mengisi header X-Forwarded-For — lihat EnableTrustedProxyCheck
+	// di internal/routes/router.go. Default 127.0.0.1/32 & ::1/128 (nginx
+	// satu mesin dengan app, sesuai panduan deploy Windows tanpa Docker).
+	// Override lewat env TRUSTED_PROXIES (pisah koma) kalau nginx beda mesin.
+	TrustedProxies []string
 }
 
 func (a AppConfig) ListenAddress() string {
@@ -75,17 +84,47 @@ type CaptchaConfig struct {
 }
 
 type BotCheckConfig struct {
+	// Enabled: aplikasi ini dipakai INTERNAL PERUSAHAAN saja (bukan
+	// pendaftaran publik terbuka lewat internet), jadi verifikasi
+	// captcha/bot-check secara sadar DIMATIKAN secara default — kalau
+	// suatu saat aplikasi ini dibuka untuk publik, aktifkan lagi lewat
+	// BOTCHECK_ENABLED=true tanpa perlu ubah kode sama sekali.
+	Enabled       bool
 	Secret        string
 	WindowMinutes int
 }
 
 type WhatsAppConfig struct {
+	// Driver menentukan implementasi Sender yang dipakai:
+	//   "gateway"   (default) — HTTP call ke gateway berbayar (Fonnte/Wablas/dst),
+	//                butuh APIURL+APIKey terisi.
+	//   "whatsmeow" — sesi WhatsApp Web sendiri via whatsmeow, gratis, tapi
+	//                perlu pairing sekali lewat `go run ./cmd/whatsapp-pair`.
+	Driver      string
+	APIURL      string
+	APIKey      string
+	Sender      string
+	SessionPath string
+}
+
+type WAOTPConfig struct {
+	Secret     string
+	TTLMinutes int
+}
+
+// SMSConfig mengonfigurasi gateway pengirim SMS untuk kode OTP (verifikasi
+// nomor HP saat registrasi, dsb) — alternatif dari WhatsApp.
+type SMSConfig struct {
 	APIURL string
 	APIKey string
 	Sender string
 }
 
-type WAOTPConfig struct {
+// PasswordResetConfig menandatangani token sesi "lupa password" (bukan
+// kode OTP itu sendiri — itu tetap lewat pkg/otp). Token ini yang membawa
+// identitas user & tahap alur (diminta -> terverifikasi) antar 3 langkah
+// endpoint /auth/password/*.
+type PasswordResetConfig struct {
 	Secret     string
 	TTLMinutes int
 }
@@ -104,12 +143,13 @@ type SwaggerConfig struct {
 func Load() *Config {
 	_ = godotenv.Load()
 
-	return &Config{
+	cfg := &Config{
 		App: AppConfig{
-			Name: getEnv("APP_NAME", "WMS-RSD"),
-			Env:  getEnv("APP_ENV", "development"),
-			Host: getEnv("APP_HOST", ""),
-			Port: getEnv("APP_PORT", "8080"),
+			Name:           getEnv("APP_NAME", "WMS-RSD"),
+			Env:            getEnv("APP_ENV", "development"),
+			Host:           getEnv("APP_HOST", ""),
+			Port:           getEnv("APP_PORT", "8080"),
+			TrustedProxies: getEnvList("TRUSTED_PROXIES", []string{"127.0.0.1/32", "::1/128"}),
 		},
 		DB: DBConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -133,24 +173,36 @@ func Load() *Config {
 			AllowedOrigins: splitAndTrim(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
 		},
 		Storage: StorageConfig{
-			Path: getEnv("STORAGE_PATH", ""),
+			Path: getEnv("STORAGE_PATH", "./storage"),
 		},
 		Captcha: CaptchaConfig{
 			Secret:     getEnv("CAPTCHA_SECRET", "change-me-captcha-secret"),
 			TTLMinutes: getEnvAsInt("CAPTCHA_TTL_MINUTES", 5),
 		},
 		BotCheck: BotCheckConfig{
+			Enabled:       getEnvAsBool("BOTCHECK_ENABLED", false),
 			Secret:        getEnv("BOTCHECK_SECRET", "change-me-botcheck-secret"),
 			WindowMinutes: getEnvAsInt("BOTCHECK_WINDOW_MINUTES", 60),
 		},
 		WhatsApp: WhatsAppConfig{
-			APIURL: getEnv("WHATSAPP_API_URL", ""),
-			APIKey: getEnv("WHATSAPP_API_KEY", ""),
-			Sender: getEnv("WHATSAPP_SENDER", "wms-RSD"),
+			Driver:      getEnv("WHATSAPP_DRIVER", "gateway"),
+			APIURL:      getEnv("WHATSAPP_API_URL", ""),
+			APIKey:      getEnv("WHATSAPP_API_KEY", ""),
+			Sender:      getEnv("WHATSAPP_SENDER", "wms-RSD"),
+			SessionPath: getEnv("WHATSMEOW_SESSION_PATH", "./var/whatsmeow-session.db"),
 		},
 		WAOTP: WAOTPConfig{
 			Secret:     getEnv("WA_OTP_SECRET", "change-me-wa-otp-secret"),
 			TTLMinutes: getEnvAsInt("WA_OTP_TTL_MINUTES", 5),
+		},
+		SMS: SMSConfig{
+			APIURL: getEnv("SMS_API_URL", ""),
+			APIKey: getEnv("SMS_API_KEY", ""),
+			Sender: getEnv("SMS_SENDER", "wms-RSD"),
+		},
+		PasswordReset: PasswordResetConfig{
+			Secret:     getEnv("PASSWORD_RESET_SECRET", "change-me-password-reset-secret"),
+			TTLMinutes: getEnvAsInt("PASSWORD_RESET_TTL_MINUTES", 10),
 		},
 		GeoIP: GeoIPConfig{
 			Enabled: getEnvAsBool("GEOIP_ENABLED", false),
@@ -162,6 +214,48 @@ func Load() *Config {
 			BasicAuthPass: getEnv("SWAGGER_BASIC_AUTH_PASS", ""),
 		},
 	}
+
+	validateProductionSecrets(cfg)
+	return cfg
+}
+
+// weakSecretDefaults adalah nilai fallback bawaan yang HANYA aman untuk
+// development — kalau ini masih terpakai di production, seluruh token JWT
+// & OTP jadi bisa dipalsukan siapa pun yang tahu kode sumber ini (kode
+// ini open, jadi nilai fallback-nya bukan rahasia).
+var weakSecretDefaults = map[string]string{
+	"JWT_ACCESS_SECRET":     "access-secret",
+	"JWT_REFRESH_SECRET":    "refresh-secret",
+	"CAPTCHA_SECRET":        "change-me-captcha-secret",
+	"BOTCHECK_SECRET":       "change-me-botcheck-secret",
+}
+
+// validateProductionSecrets menghentikan proses start-up (fail-fast) kalau
+// APP_ENV=production tapi ada secret keamanan yang masih memakai nilai
+// contoh bawaan. Lebih baik server gagal start dengan pesan jelas daripada
+// jalan normal dengan kunci yang bisa ditebak siapa saja.
+func validateProductionSecrets(cfg *Config) {
+	if cfg.App.Env != "production" {
+		return
+	}
+	actual := map[string]string{
+		"JWT_ACCESS_SECRET":  cfg.JWT.AccessSecret,
+		"JWT_REFRESH_SECRET": cfg.JWT.RefreshSecret,
+		"CAPTCHA_SECRET":     cfg.Captcha.Secret,
+		"BOTCHECK_SECRET":    cfg.BotCheck.Secret,
+	}
+	var insecure []string
+	for key, value := range actual {
+		if value == weakSecretDefaults[key] || len(value) < 24 {
+			insecure = append(insecure, key)
+		}
+	}
+	if len(insecure) > 0 {
+		log.Fatalf(
+			"config: APP_ENV=production tapi env var berikut masih pakai nilai contoh/terlalu pendek (min 24 karakter): %s — set nilai acak yang kuat sebelum deploy",
+			strings.Join(insecure, ", "),
+		)
+	}
 }
 
 func getEnv(key, fallback string) string {
@@ -169,6 +263,24 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getEnvList(key string, fallback []string) []string {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return fallback
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return fallback
+	}
+	return out
 }
 
 func getEnvAsInt(key string, fallback int) int {

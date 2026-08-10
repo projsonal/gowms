@@ -19,6 +19,12 @@ func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
 	if f.GudangID != 0 {
 		q = q.Where(constant.QueryGudangIDEq, f.GudangID)
 	}
+	if f.KategoriID != 0 {
+		q = q.Select("barang_keluar.*").Distinct().
+			Joins("JOIN barang_keluar_items ON barang_keluar_items.barang_keluar_id = barang_keluar.id").
+			Joins("JOIN barang ON barang.id = barang_keluar_items.barang_id").
+			Where("barang.kategori_id = ?", f.KategoriID)
+	}
 	return q
 }
 

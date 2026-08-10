@@ -28,20 +28,30 @@ func New(repo pgRepo.Repository, gudangRepo gudangRepo.Repository, barangKeluarR
 // ---- DTO ----
 
 type PengirimanRequest struct {
-	BarangKeluarID   *uint     `json:"barang_keluar_id"`
-	GudangAsalID     uint      `json:"gudang_asal_id" validate:"required"`
-	JenisPengambilan string    `json:"jenis_pengambilan" validate:"required,oneof=pickup dropoff"`
-	NamaPenerima     string    `json:"nama_penerima" validate:"required,max=150"`
-	TeleponPenerima  string    `json:"telepon_penerima" validate:"max=20"`
-	AlamatTujuan     string    `json:"alamat_tujuan" validate:"max=255"`
-	TanggalKirim     time.Time `json:"tanggal_kirim" validate:"required"`
-	Catatan          string    `json:"catatan" validate:"max=255"`
+	BarangKeluarID   *uint  `json:"barang_keluar_id"`
+	GudangAsalID     uint   `json:"gudang_asal_id" validate:"required"`
+	JenisPengambilan string `json:"jenis_pengambilan" validate:"required,oneof=pickup dropoff"`
+	NamaPenerima     string `json:"nama_penerima" validate:"required,max=150"`
+	TeleponPenerima  string `json:"telepon_penerima" validate:"max=20"`
+	AlamatTujuan     string `json:"alamat_tujuan" validate:"max=255"`
+	// TanggalKirim: string "YYYY-MM-DD" — lihat catatan lengkap di
+	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal soal
+	// kenapa ini WAJIB string, bukan time.Time langsung (form HTML
+	// <input type="date"> tidak pernah kirim RFC3339 penuh).
+	TanggalKirim string `json:"tanggal_kirim" validate:"required"`
+	Catatan      string `json:"catatan" validate:"max=255"`
 }
 
 type JadwalkanRequest struct {
-	NamaKurir    string     `json:"nama_kurir" validate:"required,max=100"`
-	TeleponKurir string     `json:"telepon_kurir" validate:"max=20"`
-	EstimasiTiba *time.Time `json:"estimasi_tiba"`
+	NamaKurir    string `json:"nama_kurir" validate:"required,max=100"`
+	TeleponKurir string `json:"telepon_kurir" validate:"max=20"`
+	// EstimasiTiba: string "YYYY-MM-DD" opsional, sama alasannya seperti
+	// TanggalKirim di atas.
+	EstimasiTiba string `json:"estimasi_tiba"`
+}
+
+func parseTanggalHarian(raw string) (time.Time, error) {
+	return time.Parse("2006-01-02", raw)
 }
 
 // LokasiRequest — ping posisi GPS dari perangkat/aplikasi kurir. RecordedAt

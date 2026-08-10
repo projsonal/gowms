@@ -14,7 +14,21 @@ type Barang struct {
 	StokMinimum int       `json:"stok_minimum" gorm:"not null;default:0"` // reorder point; 0 = tidak dipantau
 	Stok        int       `json:"stok" gorm:"not null;default:0"`         // agregat total, lihat AdjustStok()
 	IsActive    bool      `json:"is_active" gorm:"not null;default:true"` // nonaktif = didiskontinu, tetap tampil di histori
+	IsProtected bool      `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin — lihat internal/controller/barang Protect()
 	Deskripsi   string    `json:"deskripsi" gorm:"size:255"`
+
+	// --- Alur persetujuan (khusus barang yang DIBUAT role admin) ---
+	// super_admin membuat barang -> langsung "disetujui" (default).
+	// admin membuat barang       -> otomatis "menunggu" sampai super_admin
+	//                                Approve/Reject, lihat Create()/Approve()/
+	//                                Reject() di barang_controller.go.
+	// karyawan HANYA melihat barang berstatus "disetujui" (lihat List()).
+	ApprovalStatus  string     `json:"approval_status" gorm:"size:20;not null;default:'disetujui';index"` // disetujui | menunggu | ditolak
+	DiajukanOleh    *uint      `json:"diajukan_oleh"`
+	DisetujuiOleh   *uint      `json:"disetujui_oleh"`
+	CatatanApproval string     `json:"catatan_approval" gorm:"size:255"`
+	DireviewPada    *time.Time `json:"direview_pada"`
+
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

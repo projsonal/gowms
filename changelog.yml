@@ -1,0 +1,31 @@
+# Changelog StokRSD WMS — sumber "kebenaran" yang dibaca manusia (developer)
+# saat menambah rilis baru. Catatan: backend saat ini membaca data yang
+# SAMA dari Go literal di internal/controller/appinfo/appinfo_controller.go
+# (bukan parsing file ini secara langsung), supaya tidak menambah
+# dependency go.mod baru (gopkg.in/yaml.v3) yang belum bisa diverifikasi
+# compile di lingkungan pengembangan ini (tidak ada akses toolchain Go).
+# Kalau mau backend membaca file ini langsung: tambahkan
+# `gopkg.in/yaml.v3` (sudah ada di go.sum, tinggal `go get` lalu
+# `go mod tidy`), lalu ganti isi appinfo_controller.go dengan
+# `yaml.Unmarshal` dari file ini. SETIAP kali menambah versi baru,
+# update DUA tempat ini secara bersamaan supaya tetap sinkron.
+
+app_name: StokRSD WMS
+current_version: v1.2.0
+
+versions:
+  - version: v1.2.0
+    date: 2026-08-10
+    changes:
+      new:
+        - Purchase Order
+        - Approval Workflow
+      fix:
+        - Perbaikan stok minus
+
+  - version: v1.1.0
+    date: 2026-08-01
+    changes:
+      new:
+        - OTP Login
+        - WhatsApp Notification

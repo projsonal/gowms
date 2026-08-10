@@ -62,6 +62,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Get("/summary", view, h.Summary)
 	g.Get("/trend", view, h.Trend)
 	g.Get("/activity", view, h.Activity)
+	g.Get("/analisa", view, h.Analisa)
 	g.Get("/notifications", view, h.Notifications)
 	g.Get("/courier-performance", view, h.CourierPerformance)
 	g.Get("/gudang/beban", view, h.GudangBeban)

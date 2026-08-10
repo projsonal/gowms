@@ -52,6 +52,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.StockOpnameItem{},
 		&model.Pengiriman{},
 		&model.PengirimanTrackingPoint{},
+		&model.CodTransaction{},
+		&model.Task{},
 		&model.MaintenanceStatus{},
 	)
 }

@@ -178,6 +178,22 @@ func (h *Controller) DeleteSatuan(c *fiber.Ctx) error {
 	return utils.OK(c, "satuan berhasil dihapus", nil)
 }
 
+// maskProtectedOne menyamarkan alamat gudang yang di-Protect, KHUSUS
+// untuk role karyawan — baris tetap terlihat di daftar (nama gudang) tapi
+// alamat persisnya tidak bisa dicek. Masking dilakukan di server.
+func maskProtectedOne(role string, g *model.Gudang) {
+	if role == constant.RoleSuperAdmin || role == constant.RoleAdmin || !g.IsProtected {
+		return
+	}
+	g.Alamat = "*** dilindungi ***"
+}
+
+func maskProtected(role string, list []model.Gudang) {
+	for i := range list {
+		maskProtectedOne(role, &list[i])
+	}
+}
+
 // ---- Gudang ----
 
 // ListGudang GET /api/v1/gudang?page=&limit=&search=
@@ -187,6 +203,8 @@ func (h *Controller) ListGudang(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengambil daftar gudang", nil)
 	}
+	roleName, _ := c.Locals(constant.CtxRoleName).(string)
+	maskProtected(roleName, list)
 	return utils.OKWithMeta(c, "daftar gudang berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
@@ -200,6 +218,8 @@ func (h *Controller) DetailGudang(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "gudang tidak ditemukan", nil)
 	}
+	roleName, _ := c.Locals(constant.CtxRoleName).(string)
+	maskProtectedOne(roleName, g)
 	return utils.OK(c, "detail gudang berhasil diambil", g)
 }
 
@@ -213,7 +233,7 @@ func (h *Controller) CreateGudang(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
 	}
 
-	g := &model.Gudang{Nama: req.Nama, Alamat: req.Alamat}
+	g := &model.Gudang{Nama: req.Nama, Alamat: req.Alamat, PIC: req.PIC, Kapasitas: req.Kapasitas}
 	if err := h.repo.CreateGudang(g); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat gudang", nil)
 	}
@@ -230,6 +250,10 @@ func (h *Controller) UpdateGudang(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "gudang tidak ditemukan", nil)
 	}
+	if g.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum diubah", nil)
+	}
 
 	var req GudangRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -241,6 +265,8 @@ func (h *Controller) UpdateGudang(c *fiber.Ctx) error {
 
 	g.Nama = req.Nama
 	g.Alamat = req.Alamat
+	g.PIC = req.PIC
+	g.Kapasitas = req.Kapasitas
 	if err := h.repo.UpdateGudang(g); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui gudang", nil)
 	}
@@ -252,8 +278,13 @@ func (h *Controller) DeleteGudang(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "id gudang tidak valid", nil)
 	}
-	if _, err := h.repo.FindGudangByID(id); err != nil {
+	g, err := h.repo.FindGudangByID(id)
+	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "gudang tidak ditemukan", nil)
+	}
+	if g.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum dihapus", nil)
 	}
 
 	rakCount, err := h.repo.CountRakByGudang(id)
@@ -268,6 +299,31 @@ func (h *Controller) DeleteGudang(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menghapus gudang", nil)
 	}
 	return utils.OK(c, "gudang berhasil dihapus", nil)
+}
+
+// ProtectGudang PATCH /api/v1/gudang/:id/protect — aksi "Protect" di
+// action bar tabel. HANYA super_admin (lihat RegisterRoutes).
+func (h *Controller) ProtectGudang(c *fiber.Ctx) error {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "id gudang tidak valid", nil)
+	}
+	var req ProtectRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "payload tidak valid", nil)
+	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
+	}
+	g, err := h.repo.FindGudangByID(id)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, "gudang tidak ditemukan", nil)
+	}
+	g.IsProtected = *req.IsProtected
+	if err := h.repo.UpdateGudang(g); err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengubah status proteksi", nil)
+	}
+	return utils.OK(c, "status proteksi berhasil diubah", g)
 }
 
 // ---- Rak ----
@@ -425,28 +481,31 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
+	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/kategori", view, h.ListKategori)
 	g.Post("/kategori", tambah, h.CreateKategori)
 	g.Put("/kategori/:id", edit, h.UpdateKategori)
-	g.Delete("/kategori/:id", edit, h.DeleteKategori)
+	g.Delete("/kategori/:id", onlyStaff, edit, h.DeleteKategori)
 
 	g.Get("/satuan", view, h.ListSatuan)
 	g.Post("/satuan", tambah, h.CreateSatuan)
 	g.Put("/satuan/:id", edit, h.UpdateSatuan)
-	g.Delete("/satuan/:id", edit, h.DeleteSatuan)
+	g.Delete("/satuan/:id", onlyStaff, edit, h.DeleteSatuan)
 
 	g.Get("/", view, h.ListGudang)
 	g.Get("/:id", view, h.DetailGudang)
 	g.Post("/", tambah, h.CreateGudang)
 	g.Put("/:id", edit, h.UpdateGudang)
-	g.Delete("/:id", edit, h.DeleteGudang)
+	g.Delete("/:id", onlyStaff, edit, h.DeleteGudang)
+	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectGudang) // Protect — khusus super admin
 
 	g.Get("/rak/summary", view, h.Summary)
 	g.Get("/rak", view, h.ListRak)
 	g.Get("/rak/:id", view, h.DetailRak)
 	g.Post("/rak", tambah, h.CreateRak)
 	g.Put("/rak/:id", edit, h.UpdateRak)
-	g.Delete("/rak/:id", edit, h.DeleteRak)
+	g.Delete("/rak/:id", onlyStaff, edit, h.DeleteRak)
 	g.Patch("/rak/:id/adjust", edit, h.AdjustRak)
 }

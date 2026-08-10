@@ -26,8 +26,16 @@ type SatuanRequest struct {
 }
 
 type GudangRequest struct {
-	Nama   string `json:"nama" validate:"required,max=100"`
-	Alamat string `json:"alamat" validate:"max=255"`
+	Nama      string `json:"nama" validate:"required,max=100"`
+	Alamat    string `json:"alamat" validate:"max=255"`
+	PIC       string `json:"pic" validate:"max=100"`
+	Kapasitas int    `json:"kapasitas" validate:"min=0"`
+}
+
+// ProtectRequest — form aksi "Protect" di action bar tabel gudang (khusus
+// super_admin). Sama pola dengan Barang/Supplier/COD.
+type ProtectRequest struct {
+	IsProtected *bool `json:"is_protected" validate:"required"`
 }
 
 type RakRequest struct {

@@ -14,12 +14,15 @@ import (
 	gudangController "github.com/projsonal/gowms/internal/controller/gudang"
 	laporanController "github.com/projsonal/gowms/internal/controller/laporan"
 	maintenanceController "github.com/projsonal/gowms/internal/controller/maintenance"
+	codController "github.com/projsonal/gowms/internal/controller/cod"
 	pengirimanController "github.com/projsonal/gowms/internal/controller/pengiriman"
 	purchaseOrderController "github.com/projsonal/gowms/internal/controller/po"
 	roleController "github.com/projsonal/gowms/internal/controller/role"
 	securityController "github.com/projsonal/gowms/internal/controller/security"
 	stockOpnameController "github.com/projsonal/gowms/internal/controller/stockOpname"
 	supplierController "github.com/projsonal/gowms/internal/controller/supplier"
+	appinfoController "github.com/projsonal/gowms/internal/controller/appinfo"
+	taskController "github.com/projsonal/gowms/internal/controller/task"
 	usersController "github.com/projsonal/gowms/internal/controller/users"
 	"github.com/projsonal/gowms/internal/health"
 	authRepo "github.com/projsonal/gowms/internal/repositories/auth"
@@ -28,19 +31,19 @@ import (
 	barangMasukRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
 	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
+	codRepo "github.com/projsonal/gowms/internal/repositories/cod"
 	pengirimanRepo "github.com/projsonal/gowms/internal/repositories/pengiriman"
 	purchaseOrderRepo "github.com/projsonal/gowms/internal/repositories/po"
 	roleRepo "github.com/projsonal/gowms/internal/repositories/role"
 	stockOpnameRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
+	taskRepo "github.com/projsonal/gowms/internal/repositories/task"
 	usersRepo "github.com/projsonal/gowms/internal/repositories/users"
 	"github.com/projsonal/gowms/pkg/botcheck"
 	"github.com/projsonal/gowms/pkg/captcha"
 	"github.com/projsonal/gowms/pkg/config"
 	"github.com/projsonal/gowms/pkg/geoip"
-	"github.com/projsonal/gowms/pkg/otp"
 	"github.com/projsonal/gowms/pkg/utils"
-	"github.com/projsonal/gowms/pkg/wa"
 )
 
 type Dependencies struct {
@@ -64,6 +67,9 @@ type Dependencies struct {
 	BarangKeluarController  *barangKeluarController.Controller
 	StockOpnameController   *stockOpnameController.Controller
 	PengirimanController    *pengirimanController.Controller
+	CodController           *codController.Controller
+	TaskController          *taskController.Controller
+	AppInfoController       *appinfoController.Controller
 
 	LaporanController   *laporanController.Controller
 	DashboardController *dashboardController.Controller
@@ -92,12 +98,12 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	rBarangKeluar := barangKeluarRepo.New(db)
 	rStockOpname := stockOpnameRepo.New(db)
 	rPengiriman := pengirimanRepo.New(db)
+	rCod := codRepo.New(db)
+	rTask := taskRepo.New(db)
 	rMaintenance := maintenanceRepo.New(db)
 
 	// Services lintas modul.
 	captchaSvc := captcha.NewService(cfg.Captcha.Secret, time.Duration(cfg.Captcha.TTLMinutes)*time.Minute)
-	waOTPSvc := otp.NewService(cfg.WAOTP.Secret, time.Duration(cfg.WAOTP.TTLMinutes)*time.Minute)
-	waSender := wa.NewClient(cfg.WhatsApp.APIURL, cfg.WhatsApp.APIKey, cfg.WhatsApp.Sender)
 	botCheckSvc := botcheck.NewService(cfg.BotCheck.Secret, time.Duration(cfg.BotCheck.WindowMinutes)*time.Minute)
 	geoipSvc := newGeoIPResolver(cfg)
 
@@ -108,18 +114,16 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 		RoleRepo:   rRole,
 		JWTSvc:     jwtSvc,
 		CaptchaSvc: captchaSvc,
-		WaOTPSvc:   waOTPSvc,
-		WaSender:   waSender,
 		Cfg:        cfg,
 		GeoipSvc:   geoipSvc,
 	})
 	cUsers := usersController.New(usersController.Params{
-		UserRepo: rUsers,
-		RoleRepo: rRole,
-		JWTSvc:   jwtSvc,
-		WaOTPSvc: waOTPSvc,
-		WaSender: waSender,
-		Cfg:      cfg,
+		UserRepo:    rUsers,
+		RoleRepo:    rRole,
+		AuthRepo:    rAuth,
+		JWTSvc:      jwtSvc,
+		CaptchaSvc:  captchaSvc,
+		StoragePath: cfg.Storage.Path,
 	})
 	cRole := roleController.New(rRole, jwtSvc)
 	cGudang := gudangController.New(rGudang, rRole, jwtSvc)
@@ -130,6 +134,8 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	cBarangKeluar := barangKeluarController.New(rBarangKeluar, rBarang, rGudang, rRole, jwtSvc)
 	cStockOpname := stockOpnameController.New(rStockOpname, rBarang, rGudang, rRole, jwtSvc)
 	cPengiriman := pengirimanController.New(rPengiriman, rGudang, rBarangKeluar, rRole, jwtSvc)
+	cCod := codController.New(rCod, rRole, jwtSvc)
+	cTask := taskController.New(rTask, rRole, jwtSvc)
 	cLaporan := laporanController.New(rBarang, rPO, rBarangMasuk, rBarangKeluar, rStockOpname, rRole, jwtSvc)
 	cDashboard := dashboardController.New(rBarang, rGudang, rSupplier, rPO, rBarangMasuk, rBarangKeluar, rStockOpname, rPengiriman, rRole, jwtSvc, db)
 	cCaptcha := captchaController.New(captchaSvc)
@@ -154,6 +160,9 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 		BarangKeluarController:  cBarangKeluar,
 		StockOpnameController:   cStockOpname,
 		PengirimanController:    cPengiriman,
+		CodController:           cCod,
+		TaskController:          cTask,
+		AppInfoController:       appinfoController.New(),
 		LaporanController:       cLaporan,
 		DashboardController:     cDashboard,
 		CaptchaController:       cCaptcha,

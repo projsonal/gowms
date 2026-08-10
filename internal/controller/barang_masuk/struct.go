@@ -41,9 +41,26 @@ type BMRequest struct {
 	PurchaseOrderID *uint         `json:"purchase_order_id"`
 	SupplierID      *uint         `json:"supplier_id"`
 	GudangID        uint          `json:"gudang_id" validate:"required"`
-	Tanggal         time.Time     `json:"tanggal" validate:"required"`
+	// Tanggal: SENGAJA string "YYYY-MM-DD" (bukan time.Time langsung) —
+	// form HTML <input type="date"> di frontend cuma kirim tanggal polos
+	// tanpa jam/zona waktu (mis. "2026-08-10"), sedangkan JSON unmarshal
+	// bawaan Go untuk time.Time WAJIB format RFC3339 penuh
+	// ("2026-08-10T00:00:00Z"). Kalau field ini langsung time.Time,
+	// c.BodyParser() SELALU gagal untuk payload dari form ini dengan
+	// pesan "payload tidak valid" — bukan soal izin/permission sama
+	// sekali, murni ketidakcocokan format tanggal. Diparse manual di
+	// Create()/Update() pakai parseTanggalHarian().
+	Tanggal string        `json:"tanggal" validate:"required"`
 	Catatan         string        `json:"catatan" validate:"max=255"`
 	Items           []ItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+// parseTanggalHarian mem-parse tanggal "YYYY-MM-DD" (format bawaan
+// <input type="date">) — dipakai semua modul yang formnya punya field
+// tanggal (Barang Masuk/Keluar, Pengiriman, Purchase Order, Stock Opname)
+// supaya konsisten, alih-alih tiap modul menulis parsing sendiri-sendiri.
+func parseTanggalHarian(raw string) (time.Time, error) {
+	return time.Parse("2006-01-02", raw)
 }
 
 type SummaryResponse struct {

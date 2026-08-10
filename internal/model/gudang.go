@@ -22,12 +22,25 @@ type Satuan struct {
 func (Satuan) TableName() string { return "satuan" }
 
 type Gudang struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Nama      string    `json:"nama" gorm:"size:100;not null"`
-	Alamat    string    `json:"alamat" gorm:"size:255"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Raks      []Rak     `json:"raks,omitempty" gorm:"foreignKey:GudangID"`
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Nama        string    `json:"nama" gorm:"size:100;not null"`
+	Alamat      string    `json:"alamat" gorm:"size:255"`
+	// PIC & Kapasitas: SEBELUMNYA tidak ada di model sama sekali walau
+	// tabel Manajemen Gudang di frontend SUDAH LAMA menampilkan kolom
+	// "PIC" dan "KAPASITAS" — keduanya cuma placeholder statis ("-" dan
+	// "0/0") karena memang tidak ada tempat menyimpannya. Kapasitas di
+	// sini SENGAJA "kapasitas total" yang diisi manual (bukan otomatis
+	// dihitung dari stok barang) — model Barang tidak punya relasi
+	// gudang_id (stok agregat lintas gudang, lihat catatan panjang di
+	// lib/api/mappers.ts frontend), jadi "kapasitas TERPAKAI" per gudang
+	// belum bisa dihitung otomatis tanpa perubahan skema lebih besar
+	// (tabel barang_gudang) — itu di luar cakupan perbaikan kali ini.
+	PIC         string    `json:"pic" gorm:"size:100"`
+	Kapasitas   int       `json:"kapasitas" gorm:"not null;default:0"`
+	IsProtected bool      `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin — lihat internal/controller/gudang Protect()
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Raks        []Rak     `json:"raks,omitempty" gorm:"foreignKey:GudangID"`
 }
 
 func (Gudang) TableName() string { return "gudangs" }

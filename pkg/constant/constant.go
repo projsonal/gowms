@@ -30,6 +30,8 @@ const (
 	ModuleStockOpname     = "stock_opname"
 	ModulePengiriman      = "pengiriman"
 	ModuleLaporan         = "laporan"
+	ModuleCOD             = "cod"
+	ModuleTaskManagement  = "tasks"
 )
 
 // Fiber Locals context key, di-set oleh middleware auth setelah JWT valid.
@@ -37,6 +39,10 @@ const (
 	CtxUserID   = "ctx_user_id"
 	CtxRoleID   = "ctx_role_id"
 	CtxRoleName = "ctx_role_name"
+	// CtxSessionID: ID baris refresh_tokens yang menerbitkan access token
+	// yang sedang dipakai — lihat pkg/utils/jwt.go JWTClaims.SessionID &
+	// internal/controller/auth ListSessions/RevokeSession.
+	CtxSessionID = "ctx_session_id"
 )
 
 // Status akun & sesi.

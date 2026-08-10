@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -113,6 +114,7 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 			since = t
 		}
 	}
+	userID, _ := c.Locals(constant.CtxUserID).(uint)
 	type row struct {
 		ID        string
 		Title     string
@@ -152,8 +154,25 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	  UNION ALL
 	  SELECT 'so-' || so.id::text, 'Stock Opname', so.nomor_opname, 'opname', so.created_at
 	  FROM stock_opname so ` + optWhere(!since.IsZero()) + `
+	  UNION ALL
+	  SELECT 'tsk-' || t.id::text, 'Tugas Baru Diberikan', t.title, 'task', t.created_at
+	  FROM tasks t
+	  WHERE t.assigned_to = ? ` + optAnd(!since.IsZero(), "t.created_at") + `
+	  UNION ALL
+	  SELECT 'brg-' || b.id::text, 'Barang Baru Ditambahkan', b.nama, 'new_item', b.created_at
+	  FROM barang b
+	  WHERE b.approval_status = 'disetujui' ` + optAnd(!since.IsZero(), "b.created_at") + `
 	  ORDER BY created_at DESC LIMIT 20
 	`
+	// t.assigned_to = ? WAJIB ditaruh SEBELUM parameter `since` lain di
+	// UNION notif tugas (urutan placeholder "?" di raw SQL mengikuti urutan
+	// literal dalam teks query, bukan urutan UNION-nya) — makanya userID
+	// disisipkan tepat sebelum since-arg milik blok tasks di akhir daftar.
+	args = append(args, userID)
+	if !since.IsZero() {
+		args = append(args, since) // since milik blok tasks
+		args = append(args, since) // since milik blok barang baru (UNION paling akhir)
+	}
 	tx := db.Raw(q, args...).Scan(&rows)
 	if tx.Error != nil {
 		return utils.OK(c, "notifikasi kosong", []map[string]any{})

@@ -9,14 +9,20 @@ import (
 	"github.com/projsonal/gowms/pkg/captcha"
 	"github.com/projsonal/gowms/pkg/config"
 	"github.com/projsonal/gowms/pkg/geoip"
-	"github.com/projsonal/gowms/pkg/otp"
 	"github.com/projsonal/gowms/pkg/utils"
-	"github.com/projsonal/gowms/pkg/wa"
 )
 
 const (
-	MethodTOTP     = "totp"
-	MethodWhatsApp = "whatsapp"
+	// (Konstanta metode OTP WhatsApp/SMS sudah dihapus seluruhnya —
+	// login, registrasi, ganti password, dan reset password sekarang
+	// semua memakai captcha, bukan lagi OTP via WhatsApp/SMS.)
+
+	// totpReplayWindow: seberapa lama sebuah kode TOTP yang SUDAH DIPAKAI
+	// ditolak kalau dicoba lagi (lihat totp_replay_guard.go). 90 detik
+	// dipilih supaya menutupi jendela toleransi clock-skew ±1 langkah
+	// (30 detik) yang diizinkan pkg/utils.VerifyTOTP, jadi kode yang
+	// sama tidak bisa dipakai dua kali walau masih dalam toleransi itu.
+	totpReplayWindow = 90 * time.Second
 )
 
 type Controller struct {
@@ -25,13 +31,15 @@ type Controller struct {
 	roleRepo   role.Repository
 	jwtSvc     *utils.JWTService
 	captchaSvc *captcha.Service
-	waOTPSvc   *otp.Service
-	waSender   wa.Sender
-	waOTPTTL   time.Duration
 	totpIssuer string
 	appEnv     string
 
 	geoipSvc geoip.Resolver
+
+	// otpReplayGuard mencegah satu kode TOTP dipakai berkali-kali dalam
+	// jendela validitasnya — tanpa ini, kode 2FA yang bocor/tersadap bisa
+	// dipakai berulang selama masih dalam 30 detik masa berlakunya.
+	otpReplayGuard *totpReplayGuard
 }
 
 type Params struct {
@@ -40,8 +48,6 @@ type Params struct {
 	RoleRepo   role.Repository
 	JWTSvc     *utils.JWTService
 	CaptchaSvc *captcha.Service
-	WaOTPSvc   *otp.Service
-	WaSender   wa.Sender
 	Cfg        *config.Config
 	GeoipSvc   geoip.Resolver
 }
@@ -53,25 +59,46 @@ func New(p Params) *Controller {
 		roleRepo:   p.RoleRepo,
 		jwtSvc:     p.JWTSvc,
 		captchaSvc: p.CaptchaSvc,
-		waOTPSvc:   p.WaOTPSvc,
-		waSender:   p.WaSender,
-		waOTPTTL:   time.Duration(p.Cfg.WAOTP.TTLMinutes) * time.Minute,
 		totpIssuer: p.Cfg.TOTP.Issuer,
 		appEnv:     p.Cfg.App.Env,
 		geoipSvc:   p.GeoipSvc,
+
+		otpReplayGuard: newTOTPReplayGuard(totpReplayWindow),
 	}
 }
 
 type RegisterRequest struct {
 	Username             string `json:"username" validate:"required,min=4,max=50"`
-	Email                string `json:"email" validate:"required,email"`
+	// Email OPSIONAL — form registrasi (lihat RegisterStep di frontend)
+	// sudah tidak mengumpulkan email sama sekali; identitas login pakai
+	// username. Field dipertahankan (bukan dihapus) supaya kontrak API
+	// tidak breaking kalau suatu saat email diaktifkan lagi, dan supaya
+	// endpoint lama yang masih mengirim email tetap tervalidasi benar.
+	Email                string `json:"email" validate:"omitempty,email"`
 	Password             string `json:"password" validate:"required,min=8"`
 	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
 	FullName             string `json:"full_name" validate:"required"`
-	PhoneNumber          string `json:"phone_number" validate:"omitempty,e164"`
-	RoleName             string `json:"role_name" validate:"omitempty,oneof=super_admin admin karyawan analis_data"`
-	CaptchaToken         string `json:"captcha_token" validate:"required"`
-	CaptchaAnswer        string `json:"captcha_answer" validate:"required"`
+	// Nomor HP WAJIB diisi (bukan lagi opsional) karena sekarang dipakai
+	// untuk verifikasi OTP saat registrasi (lihat RequestRegisterOTP /
+	// VerifyRegisterOTP di bawah) — tanpa nomor valid, langkah verifikasi
+	// tidak mungkin dijalankan.
+	// Nomor HP OPSIONAL. Verifikasi OTP saat registrasi (WA/SMS) sudah
+	// dilepas dari alur wajib karena gateway pengirimnya sering belum
+	// terkonfigurasi di lingkungan dev — 2FA (Google Authenticator) tetap
+	// jadi satu-satunya lapisan verifikasi wajib untuk aktivasi akun.
+	// Endpoint /auth/register/otp/request & /otp/verify TETAP ada untuk
+	// dipakai lagi nanti kalau gateway WA/SMS sudah siap.
+	PhoneNumber   string `json:"phone_number" validate:"omitempty,e164"`
+	RoleName      string `json:"role_name" validate:"omitempty,oneof=super_admin admin karyawan analis_data"`
+	// Captcha OPSIONAL: aplikasi ini khusus internal perusahaan (bukan
+	// pendaftaran publik terbuka), jadi UI captcha sengaja tidak
+	// ditampilkan lagi di frontend. Kalau frontend TETAP mengirim
+	// captcha_token/captcha_answer (mis. suatu saat captcha diaktifkan
+	// lagi untuk skenario lain), field-nya tetap diverifikasi di bawah —
+	// jadi endpoint ini tetap aman dipakai kalau captcha diaktifkan lagi
+	// nanti tanpa perlu ubah kontrak API.
+	CaptchaToken  string `json:"captcha_token" validate:"omitempty"`
+	CaptchaAnswer string `json:"captcha_answer" validate:"omitempty"`
 }
 
 type LoginRequest struct {
@@ -80,14 +107,15 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	RequireSetup2FA bool         `json:"require_setup_2fa"`
-	RequireOTP      bool         `json:"require_otp"`
-	PendingToken    string       `json:"pending_token,omitempty"`
-	TokenType       string       `json:"token_type,omitempty"`
-	AccessToken     string       `json:"access_token,omitempty"`
-	RefreshToken    string       `json:"refresh_token,omitempty"`
-	User            *UserSummary `json:"user,omitempty"`
-	Session         *SessionInfo `json:"session,omitempty"`
+	RequirePhoneVerification bool         `json:"require_phone_verification"`
+	RequireSetup2FA          bool         `json:"require_setup_2fa"`
+	RequireOTP               bool         `json:"require_otp"`
+	PendingToken             string       `json:"pending_token,omitempty"`
+	TokenType                string       `json:"token_type,omitempty"`
+	AccessToken              string       `json:"access_token,omitempty"`
+	RefreshToken             string       `json:"refresh_token,omitempty"`
+	User                     *UserSummary `json:"user,omitempty"`
+	Session                  *SessionInfo `json:"session,omitempty"`
 }
 
 type SessionInfo struct {
@@ -100,6 +128,10 @@ type SessionInfo struct {
 	IPAddress      string `json:"ip_address"`
 	Location       string `json:"location"`
 	CreatedAt      string `json:"created_at,omitempty"`
+	// IsCurrent: true kalau ini sesi yang sedang dipakai request ini
+	// sendiri (lihat JWTClaims.SessionID) — dipakai frontend menandai
+	// "Perangkat ini" & memicu logout otomatis kalau di-Cabut sendiri.
+	IsCurrent bool `json:"is_current"`
 }
 
 type SessionListResponse struct {
@@ -132,22 +164,32 @@ type ConfirmSetup2FARequest struct {
 type VerifyOTPRequest struct {
 	PendingToken string `json:"pending_token" validate:"required"`
 	OTPCode      string `json:"otp_code" validate:"required,len=6"`
-	Method       string `json:"method" validate:"omitempty,oneof=totp whatsapp"`
-	OTPToken     string `json:"otp_token" validate:"required_if=Method whatsapp"`
-}
-
-type RequestOTPRequest struct {
-	PendingToken string `json:"pending_token" validate:"required"`
-	Method       string `json:"method" validate:"required,oneof=whatsapp"`
-}
-
-type RequestOTPResponse struct {
-	OTPToken  string `json:"otp_token"`
-	ExpiresIn int    `json:"expires_in_seconds"`
 }
 
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+// ---------------------------------------------------------------------
+
+// ResetPasswordRequest — reset password langsung dalam SATU langkah (TIDAK
+// lagi lewat OTP WhatsApp/SMS), diverifikasi captcha gambar self-hosted.
+//
+// Catatan keamanan yang WAJIB diketahui: menghapus verifikasi kepemilikan
+// akun (OTP ke nomor terdaftar) berarti SIAPA PUN yang tahu username/email
+// sebuah akun kini bisa mengganti passwordnya HANYA dengan menyelesaikan
+// captcha — captcha cuma membuktikan "bukan bot", BUKAN "pemilik akun
+// ini". Ini keputusan produk yang diminta eksplisit (menyederhanakan alur
+// lupa password), bukan kelalaian — tapi risikonya nyata: akun bisa
+// diambil alih orang lain yang tahu/menebak username. Mitigasi minimal
+// yang tetap dipertahankan: PasswordResetRateLimiter di RegisterRoutes.
+type ResetPasswordRequest struct {
+	// Identifier boleh username ATAU email.
+	Identifier              string `json:"identifier" validate:"required"`
+	NewPassword             string `json:"new_password" validate:"required,min=8"`
+	NewPasswordConfirmation string `json:"new_password_confirmation" validate:"required,eqfield=NewPassword"`
+	CaptchaToken            string `json:"captcha_token" validate:"required"`
+	CaptchaAnswer           string `json:"captcha_answer" validate:"required"`
 }
 
 type MeResponse struct {

@@ -16,5 +16,5 @@ const (
 
 const (
 	ErrLaporanTipeTidakDidukung   = "Jenis Laporan tidak di dukung."
-	ErrLaporanFormatTidakDidukung = "Format ekspor laporan tidak di dukung (Gunakan excel atau pdf)."
+	ErrLaporanFormatTidakDidukung = "Format ekspor laporan tidak di dukung (Gunakan excel, pdf, atau docs)."
 )

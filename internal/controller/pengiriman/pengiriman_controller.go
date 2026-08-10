@@ -77,6 +77,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggalKirim, err := parseTanggalHarian(req.TanggalKirim)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if err := h.validateRequest(req); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, err.Error(), nil)
 	}
@@ -90,7 +94,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		TeleponPenerima:  req.TeleponPenerima,
 		AlamatTujuan:     req.AlamatTujuan,
 		Status:           constant.StatusPGDraft,
-		TanggalKirim:     req.TanggalKirim,
+		TanggalKirim:     tanggalKirim,
 		Catatan:          req.Catatan,
 	}
 	if err := h.repo.Create(pg); err != nil {
@@ -125,6 +129,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggalKirim, err := parseTanggalHarian(req.TanggalKirim)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if err := h.validateRequest(req); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, err.Error(), nil)
 	}
@@ -135,7 +143,7 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	pg.NamaPenerima = req.NamaPenerima
 	pg.TeleponPenerima = req.TeleponPenerima
 	pg.AlamatTujuan = req.AlamatTujuan
-	pg.TanggalKirim = req.TanggalKirim
+	pg.TanggalKirim = tanggalKirim
 	pg.Catatan = req.Catatan
 	if err := h.repo.Update(pg); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui dokumen pengiriman", nil)
@@ -168,8 +176,16 @@ func (h *Controller) Jadwalkan(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	var estimasiTiba *time.Time
+	if req.EstimasiTiba != "" {
+		parsed, err := parseTanggalHarian(req.EstimasiTiba)
+		if err != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "format tanggal estimasi tidak valid (YYYY-MM-DD)", nil)
+		}
+		estimasiTiba = &parsed
+	}
 
-	pg, err := h.repo.Jadwalkan(id, req.NamaKurir, req.TeleponKurir, req.EstimasiTiba)
+	pg, err := h.repo.Jadwalkan(id, req.NamaKurir, req.TeleponKurir, estimasiTiba)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
@@ -297,6 +313,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
@@ -304,7 +321,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Get("/:id/lokasi", view, h.LokasiTerkini)
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
-	g.Delete("/:id", edit, h.Delete)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/jadwalkan", edit, h.Jadwalkan)
 	g.Patch("/:id/mulai", edit, h.Mulai)
 	g.Post("/:id/lokasi", edit, h.KirimLokasi)

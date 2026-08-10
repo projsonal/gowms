@@ -8,6 +8,9 @@ import (
 type Filter struct {
 	Status   string
 	GudangID uint
+	// KategoriID memfilter berdasarkan kategori barang di dalam item-item
+	// dokumen barang keluar (join lewat barang_keluar_items -> barang).
+	KategoriID uint
 }
 
 type Repository interface {

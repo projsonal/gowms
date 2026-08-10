@@ -41,6 +41,10 @@ func (r *repository) Update(u *model.User) error {
 	return r.db.Save(u).Error
 }
 
+func (r *repository) Delete(id uint) error {
+	return r.db.Delete(&model.User{}, id).Error
+}
+
 func (r *repository) UpdateTOTPSecret(userID uint, secret string, enabled bool) error {
 	return r.db.Model(&model.User{}).Where("id = ?", userID).
 		Updates(map[string]interface{}{"totp_secret": secret, "is_2fa_enabled": enabled}).Error

@@ -27,6 +27,7 @@ func JWTAuth(jwtSvc *utils.JWTService) fiber.Handler {
 		c.Locals(constant.CtxUserID, claims.UserID)
 		c.Locals(constant.CtxRoleID, claims.RoleID)
 		c.Locals(constant.CtxRoleName, claims.RoleName)
+		c.Locals(constant.CtxSessionID, claims.SessionID)
 		return c.Next()
 	}
 }

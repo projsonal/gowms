@@ -61,7 +61,8 @@ func toItemModels(items []ItemRequest) []model.BarangKeluarItem {
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
-	f := bkRepo.Filter{Status: c.Query("status", ""), GudangID: uint(gudangID)}
+	kategoriID, _ := strconv.ParseUint(c.Query("kategori_id", "0"), 10, 64)
+	f := bkRepo.Filter{Status: c.Query("status", ""), GudangID: uint(gudangID), KategoriID: uint(kategoriID)}
 
 	list, total, err := h.repo.List(p, f)
 	if err != nil {
@@ -88,6 +89,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggal, err := parseTanggalHarian(req.Tanggal)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.gudangRepo.FindGudangByID(req.GudangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
@@ -99,7 +104,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		NomorPengeluaran: generateNomorBK(),
 		GudangID:         req.GudangID,
 		Status:           constant.StatusBKDraft,
-		Tanggal:          req.Tanggal,
+		Tanggal:          tanggal,
 		Keperluan:        req.Keperluan,
 		Penerima:         req.Penerima,
 		Items:            toItemModels(req.Items),
@@ -135,6 +140,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggal, err := parseTanggalHarian(req.Tanggal)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.gudangRepo.FindGudangByID(req.GudangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
@@ -143,7 +152,7 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	}
 
 	bk.GudangID = req.GudangID
-	bk.Tanggal = req.Tanggal
+	bk.Tanggal = tanggal
 	bk.Keperluan = req.Keperluan
 	bk.Penerima = req.Penerima
 	if err := h.repo.Update(bk, toItemModels(req.Items)); err != nil {
@@ -212,13 +221,14 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
-	g.Delete("/:id", edit, h.Delete)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/selesai", edit, h.Complete)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
 }

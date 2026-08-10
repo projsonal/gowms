@@ -22,6 +22,34 @@ func parseIDParam(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
+// maskProtectedOne menyamarkan field kontak sensitif (telepon, email,
+// alamat, NPWP, catatan) pada supplier yang di-Protect, KHUSUS untuk role
+// karyawan — baris tetap terlihat ada di daftar (nama, status) tapi
+// datanya tidak bisa dicek. Masking dilakukan di server sebelum data
+// dikirim, bukan cuma disembunyikan di UI.
+func maskProtectedOne(role string, s *model.Supplier) {
+	if role == constant.RoleSuperAdmin || role == constant.RoleAdmin || !s.IsProtected {
+		return
+	}
+	locked := "*** dilindungi ***"
+	s.Telepon = locked
+	s.Email = locked
+	s.Alamat = locked
+	s.Catatan = locked
+	if s.NPWP != nil {
+		s.NPWP = &locked
+	}
+	if s.PIC != nil {
+		s.PIC = &locked
+	}
+}
+
+func maskProtected(role string, list []model.Supplier) {
+	for i := range list {
+		maskProtectedOne(role, &list[i])
+	}
+}
+
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := supplierRepo.Filter{OnlyActive: c.Query("status", "") == "aktif"}
@@ -30,6 +58,8 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengambil daftar supplier", nil)
 	}
+	roleName, _ := c.Locals(constant.CtxRoleName).(string)
+	maskProtected(roleName, list)
 	return utils.OKWithMeta(c, "daftar supplier berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
@@ -43,6 +73,8 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "supplier tidak ditemukan", nil)
 	}
+	roleName, _ := c.Locals(constant.CtxRoleName).(string)
+	maskProtectedOne(roleName, s)
 	return utils.OK(c, "detail supplier berhasil diambil", s)
 }
 
@@ -82,6 +114,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "supplier tidak ditemukan", nil)
 	}
+	if s.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum diubah", nil)
+	}
 
 	var req SupplierRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -113,13 +149,40 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "id supplier tidak valid", nil)
 	}
-	if _, err := h.repo.FindByID(id); err != nil {
+	s, err := h.repo.FindByID(id)
+	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "supplier tidak ditemukan", nil)
+	}
+	if s.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum dihapus", nil)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menghapus supplier", nil)
 	}
 	return utils.OK(c, "supplier berhasil dihapus", nil)
+}
+
+// Protect PATCH /supplier/:id/protect — aksi "Protect" di action bar
+// tabel. HANYA super_admin (lihat RegisterRoutes). Sama pola dengan Barang/COD.
+func (h *Controller) Protect(c *fiber.Ctx) error {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "id supplier tidak valid", nil)
+	}
+	var req ProtectRequest
+	if !utils.ParseAndValidate(c, &req) {
+		return nil
+	}
+	s, err := h.repo.FindByID(id)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, "supplier tidak ditemukan", nil)
+	}
+	s.IsProtected = *req.IsProtected
+	if err := h.repo.Update(s); err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengubah status proteksi", nil)
+	}
+	return utils.OK(c, "status proteksi berhasil diubah", s)
 }
 
 func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
@@ -165,12 +228,15 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
+	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
-	g.Delete("/:id", edit, h.Delete)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/status", edit, h.UpdateStatus)
+	g.Patch("/:id/protect", onlySuperAdmin, h.Protect) // Protect — khusus super admin
 }

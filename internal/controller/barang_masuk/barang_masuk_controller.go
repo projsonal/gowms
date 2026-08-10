@@ -104,7 +104,13 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
 	poID, _ := strconv.ParseUint(c.Query("purchase_order_id", "0"), 10, 64)
-	f := bmRepo.Filter{Status: c.Query("status", ""), GudangID: uint(gudangID), PurchaseOrderID: uint(poID)}
+	kategoriID, _ := strconv.ParseUint(c.Query("kategori_id", "0"), 10, 64)
+	f := bmRepo.Filter{
+		Status:          c.Query("status", ""),
+		GudangID:        uint(gudangID),
+		PurchaseOrderID: uint(poID),
+		KategoriID:      uint(kategoriID),
+	}
 
 	list, total, err := h.repo.List(p, f)
 	if err != nil {
@@ -133,6 +139,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggal, err := parseTanggalHarian(req.Tanggal)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.gudangRepo.FindGudangByID(req.GudangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
@@ -146,7 +156,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		SupplierID:      req.SupplierID,
 		GudangID:        req.GudangID,
 		Status:          constant.StatusBMDraft,
-		Tanggal:         req.Tanggal,
+		Tanggal:         tanggal,
 		Catatan:         req.Catatan,
 		Items:           toItemModels(req.Items),
 	}
@@ -182,6 +192,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	tanggal, err := parseTanggalHarian(req.Tanggal)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "format tanggal tidak valid (YYYY-MM-DD)", nil)
+	}
 	if _, err := h.gudangRepo.FindGudangByID(req.GudangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
@@ -192,7 +206,7 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	bm.PurchaseOrderID = req.PurchaseOrderID
 	bm.SupplierID = req.SupplierID
 	bm.GudangID = req.GudangID
-	bm.Tanggal = req.Tanggal
+	bm.Tanggal = tanggal
 	bm.Catatan = req.Catatan
 	if err := h.repo.Update(bm, toItemModels(req.Items)); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui dokumen barang masuk", nil)
@@ -261,13 +275,14 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
+	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
-	g.Delete("/:id", edit, h.Delete)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/selesai", edit, h.Complete)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
 }

@@ -9,6 +9,9 @@ type Filter struct {
 	Status          string
 	GudangID        uint
 	PurchaseOrderID uint
+	// KategoriID memfilter berdasarkan kategori barang di dalam item-item
+	// dokumen barang masuk (join lewat barang_masuk_items -> barang).
+	KategoriID uint
 }
 
 type Repository interface {

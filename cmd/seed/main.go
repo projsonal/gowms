@@ -12,18 +12,20 @@ import (
 	"gorm.io/gorm"
 )
 
+const roleNameQuery = "name = ?"
+
 var modules = []string{
 	constant.ModuleDashboard, "kategori", "satuan", constant.ModuleManajemenGudang, "rak", "barang", constant.ModuleKelolaBarang,
 	constant.ModuleSupplier, constant.ModulePurchaseOrder,
 	constant.ModuleBarangMasuk, constant.ModuleBarangKeluar,
 	constant.ModuleStockOpname, constant.ModulePengiriman,
-	constant.ModuleLaporan, constant.ModuleManajemenUser, constant.ModuleSettings, "notifikasi",
+	constant.ModuleLaporan, constant.ModuleManajemenUser, constant.ModuleSettings, "notifikasi", constant.ModuleCOD,
 }
 var actions = []string{constant.ActionView, constant.ActionTambah, constant.ActionEdit, constant.ActionApprovalReject, constant.ActionPrint, constant.ActionAssignDelegasi}
 
 func upsertUser(db *gorm.DB, username, email, fullname, password, roleName string) uint {
 	var role model.Role
-	if err := db.Where("name = ?", roleName).First(&role).Error; err != nil {
+	if err := db.Where(roleNameQuery, roleName).First(&role).Error; err != nil {
 		log.Fatalf("role %s not found: %v", roleName, err)
 	}
 	hash, err := utils.HashPassword(password)
@@ -65,7 +67,7 @@ func seedPermissions(db *gorm.DB) {
 
 func grantAll(db *gorm.DB, roleName string) {
 	var role model.Role
-	db.Where("name = ?", roleName).First(&role)
+	db.Where(roleNameQuery, roleName).First(&role)
 	var perms []model.Permission
 	db.Find(&perms)
 	for _, p := range perms {
@@ -79,7 +81,7 @@ func grantAll(db *gorm.DB, roleName string) {
 
 func grantView(db *gorm.DB, roleName string) {
 	var role model.Role
-	db.Where("name = ?", roleName).First(&role)
+	db.Where(roleNameQuery, roleName).First(&role)
 	var perms []model.Permission
 	db.Where("action = ?", constant.ActionView).Find(&perms)
 	for _, p := range perms {

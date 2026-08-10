@@ -21,6 +21,17 @@ func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
 	if f.PurchaseOrderID != 0 {
 		q = q.Where("purchase_order_id = ?", f.PurchaseOrderID)
 	}
+	if f.KategoriID != 0 {
+		// Dokumen barang masuk bisa berisi beberapa item; JOIN + DISTINCT
+		// (dengan SELECT eksplisit ke tabel utama supaya tidak "ambiguous
+		// column" karena semua tabel yang di-JOIN sama-sama punya kolom id)
+		// supaya satu dokumen tidak muncul dobel kalau punya >1 item
+		// dengan kategori yang sama.
+		q = q.Select("barang_masuk.*").Distinct().
+			Joins("JOIN barang_masuk_items ON barang_masuk_items.barang_masuk_id = barang_masuk.id").
+			Joins("JOIN barang ON barang.id = barang_masuk_items.barang_id").
+			Where("barang.kategori_id = ?", f.KategoriID)
+	}
 	return q
 }
 

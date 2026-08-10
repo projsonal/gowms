@@ -225,10 +225,61 @@ func (h *Controller) buildReport(tipe string, dari, sampai *time.Time) (title st
 	return title, headers, rows, err
 }
 
+// computeGenericSummary membangun ringkasan generik (total baris + agregat
+// kolom yang namanya mengindikasikan nilai uang/kuantitas) dari data
+// laporan APA PUN — dipakai supaya file yang diunduh (Excel/PDF/Word) ikut
+// membawa info "di luar tabel rincian" (setara kartu ringkasan/chart di
+// UI), tanpa perlu logika ringkasan terpisah untuk tiap tipe laporan.
+func computeGenericSummary(headers []string, rows [][]string) [][2]string {
+	summary := [][2]string{{"Total Baris", strconv.Itoa(len(rows))}}
+
+	for colIdx, header := range headers {
+		lower := strings.ToLower(header)
+		switch {
+		case strings.Contains(lower, "nilai") || strings.Contains(lower, "harga") || strings.Contains(lower, "total"):
+			var sum int64
+			for _, row := range rows {
+				if colIdx >= len(row) {
+					continue
+				}
+				cleaned := strings.ReplaceAll(row[colIdx], ".", "")
+				cleaned = strings.ReplaceAll(cleaned, ",", "")
+				cleaned = strings.TrimSpace(strings.TrimPrefix(cleaned, "Rp"))
+				if n, err := strconv.ParseInt(cleaned, 10, 64); err == nil {
+					sum += n
+				}
+			}
+			summary = append(summary, [2]string{"Total " + header, "Rp " + formatRupiah(sum)})
+		case strings.Contains(lower, "stok") || strings.Contains(lower, "kuantitas") || strings.Contains(lower, "qty"):
+			var sum int64
+			for _, row := range rows {
+				if colIdx >= len(row) {
+					continue
+				}
+				if n, err := strconv.ParseInt(strings.TrimSpace(row[colIdx]), 10, 64); err == nil {
+					sum += n
+				}
+			}
+			summary = append(summary, [2]string{"Total " + header, strconv.FormatInt(sum, 10)})
+		case strings.Contains(lower, "gudang"):
+			distinct := map[string]struct{}{}
+			for _, row := range rows {
+				if colIdx < len(row) && row[colIdx] != "" && row[colIdx] != "-" {
+					distinct[row[colIdx]] = struct{}{}
+				}
+			}
+			if len(distinct) > 0 {
+				summary = append(summary, [2]string{"Gudang Terlibat", strconv.Itoa(len(distinct))})
+			}
+		}
+	}
+	return summary
+}
+
 func (h *Controller) Export(c *fiber.Ctx) error {
 	tipe := c.Query("tipe", "")
 	format := c.Query("format", "")
-	if format != constant.FormatExcel && format != constant.FormatPDF {
+	if format != constant.FormatExcel && format != constant.FormatPDF && format != constant.FormatWord {
 		return utils.Fail(c, fiber.StatusBadRequest, constant.ErrLaporanFormatTidakDidukung, nil)
 	}
 
@@ -247,9 +298,10 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 	}
 
 	timestamp := time.Now().Format("20060102-150405")
+	summary := computeGenericSummary(headers, rows)
 	switch format {
 	case constant.FormatExcel:
-		data, err := reportexport.ToExcel(title, headers, rows)
+		data, err := reportexport.ToExcel(title, summary, headers, rows)
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file excel", nil)
 		}
@@ -257,12 +309,20 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-%s.xlsx"`, tipe, timestamp))
 		return c.Send(data)
 	case constant.FormatPDF:
-		data, err := reportexport.ToPDF(title, headers, rows)
+		data, err := reportexport.ToPDF(title, summary, headers, rows)
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file pdf", nil)
 		}
 		c.Set(fiber.HeaderContentType, "application/pdf")
 		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-%s.pdf"`, tipe, timestamp))
+		return c.Send(data)
+	case constant.FormatWord:
+		data, err := reportexport.ToDocx(title, summary, headers, rows)
+		if err != nil {
+			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file docx", nil)
+		}
+		c.Set(fiber.HeaderContentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-%s.docx"`, tipe, timestamp))
 		return c.Send(data)
 	}
 	return utils.Fail(c, fiber.StatusBadRequest, constant.ErrLaporanFormatTidakDidukung, nil)
@@ -276,6 +336,38 @@ func (h *Controller) Types(c *fiber.Ctx) error {
 	return utils.OK(c, "daftar tipe laporan berhasil diambil", types)
 }
 
+// Preview GET /laporan/preview?tipe=&dari=&sampai= — dipakai halaman
+// laporan di frontend untuk menampilkan tabel "Rincian Laporan" & kartu
+// ringkasan dengan data ASLI dari database, sebelum user memutuskan mau
+// diunduh atau tidak (sebelumnya frontend cuma menampilkan data dummy dan
+// baru memanggil backend saat tombol "Unduh Laporan" ditekan).
+func (h *Controller) Preview(c *fiber.Ctx) error {
+	tipe := c.Query("tipe", "")
+	dari, sampai, err := parseDateRange(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, err.Error(), nil)
+	}
+	title, headers, rows, err := h.buildReport(tipe, dari, sampai)
+	if err != nil {
+		status := fiber.StatusInternalServerError
+		if err.Error() == constant.ErrLaporanTipeTidakDidukung {
+			status = fiber.StatusBadRequest
+		}
+		return utils.Fail(c, status, err.Error(), nil)
+	}
+	summaryPairs := computeGenericSummary(headers, rows)
+	summary := make([]fiber.Map, 0, len(summaryPairs))
+	for _, kv := range summaryPairs {
+		summary = append(summary, fiber.Map{"label": kv[0], "value": kv[1]})
+	}
+	return utils.OK(c, "pratinjau laporan berhasil diambil", fiber.Map{
+		"title":   title,
+		"headers": headers,
+		"rows":    rows,
+		"summary": summary,
+	})
+}
+
 // RegisterRoutes mendaftarkan endpoint modul "Laporan".
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/laporan", middleware.JWTAuth(h.jwtSvc))
@@ -283,5 +375,6 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	print := middleware.RequirePermission(h.roleRepo, Module, constant.ActionPrint)
 
 	g.Get("/tipe", view, h.Types)
+	g.Get("/preview", view, h.Preview)
 	g.Get("/export", print, h.Export)
 }
