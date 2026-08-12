@@ -233,7 +233,10 @@ func (h *Controller) CreateGudang(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
 	}
 
-	g := &model.Gudang{Nama: req.Nama, Alamat: req.Alamat, PIC: req.PIC, Kapasitas: req.Kapasitas}
+	g := &model.Gudang{
+		Nama: req.Nama, Alamat: req.Alamat, PIC: req.PIC, Telepon: req.Telepon, Kapasitas: req.Kapasitas,
+		Latitude: req.Latitude, Longitude: req.Longitude,
+	}
 	if err := h.repo.CreateGudang(g); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat gudang", nil)
 	}
@@ -266,7 +269,10 @@ func (h *Controller) UpdateGudang(c *fiber.Ctx) error {
 	g.Nama = req.Nama
 	g.Alamat = req.Alamat
 	g.PIC = req.PIC
+	g.Telepon = req.Telepon
 	g.Kapasitas = req.Kapasitas
+	g.Latitude = req.Latitude
+	g.Longitude = req.Longitude
 	if err := h.repo.UpdateGudang(g); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui gudang", nil)
 	}

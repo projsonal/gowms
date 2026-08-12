@@ -93,6 +93,8 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		NamaPenerima:     req.NamaPenerima,
 		TeleponPenerima:  req.TeleponPenerima,
 		AlamatTujuan:     req.AlamatTujuan,
+		DestLat:          req.DestLat,
+		DestLng:          req.DestLng,
 		Status:           constant.StatusPGDraft,
 		TanggalKirim:     tanggalKirim,
 		Catatan:          req.Catatan,
@@ -124,6 +126,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
+	if pg.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum diubah", nil)
+	}
 
 	var req PengirimanRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -143,6 +149,8 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	pg.NamaPenerima = req.NamaPenerima
 	pg.TeleponPenerima = req.TeleponPenerima
 	pg.AlamatTujuan = req.AlamatTujuan
+	pg.DestLat = req.DestLat
+	pg.DestLng = req.DestLng
 	pg.TanggalKirim = tanggalKirim
 	pg.Catatan = req.Catatan
 	if err := h.repo.Update(pg); err != nil {
@@ -157,13 +165,39 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "id pengiriman tidak valid", nil)
 	}
-	if _, err := h.requireDraft(id); err != nil {
+	pg, err := h.requireDraft(id)
+	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
+	}
+	if pg.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum dihapus", nil)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menghapus dokumen pengiriman", nil)
 	}
 	return utils.OK(c, "dokumen pengiriman berhasil dihapus", nil)
+}
+
+// ProtectPengiriman PATCH /pengiriman/:id/protect — aksi "Protect" di
+// action bar tabel. HANYA super_admin (lihat RegisterRoutes).
+func (h *Controller) ProtectPengiriman(c *fiber.Ctx) error {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "id pengiriman tidak valid", nil)
+	}
+	var req ProtectRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "payload tidak valid", nil)
+	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
+	}
+	pg, err := h.repo.SetProtected(id, *req.IsProtected)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengubah status proteksi", nil)
+	}
+	return utils.OK(c, "status proteksi berhasil diubah", pg)
 }
 
 // Jadwalkan PATCH /pengiriman/:id/jadwalkan — draft -> dijadwalkan, assign kurir.
@@ -314,6 +348,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
 	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
+	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
@@ -327,4 +362,5 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Post("/:id/lokasi", edit, h.KirimLokasi)
 	g.Patch("/:id/selesai", edit, h.Selesaikan)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
+	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectPengiriman) // Protect — khusus super admin
 }

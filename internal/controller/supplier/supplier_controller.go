@@ -2,6 +2,7 @@ package supplier
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -33,7 +34,7 @@ func maskProtectedOne(role string, s *model.Supplier) {
 	}
 	locked := "*** dilindungi ***"
 	s.Telepon = locked
-	s.Email = locked
+	s.KerjasamaKurir = locked
 	s.Alamat = locked
 	s.Catatan = locked
 	if s.NPWP != nil {
@@ -50,6 +51,44 @@ func maskProtected(role string, list []model.Supplier) {
 	}
 }
 
+// parseKurirNames memecah "JNE, J&T,Lalamove" jadi ["JNE","J&T","Lalamove"],
+// membuang entri kosong hasil koma berlebih/spasi.
+func parseKurirNames(raw string) []string {
+	parts := strings.Split(raw, ",")
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			names = append(names, trimmed)
+		}
+	}
+	return names
+}
+
+// withStats menghitung TotalOrder & Rating satu supplier dari
+// KerjasamaKurir-nya (lihat KurirStats di repository). Rating diskalakan
+// 0-5 dari proporsi pengiriman yang berhasil "terkirim".
+func (h *Controller) withStats(s model.Supplier) SupplierResponse {
+	kurirNames := parseKurirNames(s.KerjasamaKurir)
+	total, terkirim, err := h.repo.KurirStats(kurirNames)
+	if err != nil {
+		return SupplierResponse{Supplier: s}
+	}
+	var rating float64
+	if total > 0 {
+		rating = (float64(terkirim) / float64(total)) * 5
+	}
+	return SupplierResponse{Supplier: s, TotalOrder: total, Rating: rating}
+}
+
+func withStatsList(h *Controller, list []model.Supplier) []SupplierResponse {
+	out := make([]SupplierResponse, 0, len(list))
+	for _, s := range list {
+		out = append(out, h.withStats(s))
+	}
+	return out
+}
+
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := supplierRepo.Filter{OnlyActive: c.Query("status", "") == "aktif"}
@@ -60,7 +99,7 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	}
 	roleName, _ := c.Locals(constant.CtxRoleName).(string)
 	maskProtected(roleName, list)
-	return utils.OKWithMeta(c, "daftar supplier berhasil diambil", list, utils.BuildPaginationMeta(p, total))
+	return utils.OKWithMeta(c, "daftar supplier berhasil diambil", withStatsList(h, list), utils.BuildPaginationMeta(p, total))
 }
 
 // Detail GET /supplier/:id
@@ -75,7 +114,7 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	}
 	roleName, _ := c.Locals(constant.CtxRoleName).(string)
 	maskProtectedOne(roleName, s)
-	return utils.OK(c, "detail supplier berhasil diambil", s)
+	return utils.OK(c, "detail supplier berhasil diambil", h.withStats(*s))
 }
 
 func (h *Controller) Create(c *fiber.Ctx) error {
@@ -93,7 +132,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		Nama:     req.Nama,
 		PIC:      req.PIC,
 		Telepon:  req.Telepon,
-		Email:    req.Email,
+		KerjasamaKurir: req.KerjasamaKurir,
 		Alamat:   req.Alamat,
 		NPWP:     req.NPWP,
 		Catatan:  req.Catatan,
@@ -102,7 +141,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(s); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat supplier", nil)
 	}
-	return utils.Created(c, "supplier berhasil dibuat", s)
+	return utils.Created(c, "supplier berhasil dibuat", h.withStats(*s))
 }
 
 func (h *Controller) Update(c *fiber.Ctx) error {
@@ -134,14 +173,14 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	s.Nama = req.Nama
 	s.PIC = req.PIC
 	s.Telepon = req.Telepon
-	s.Email = req.Email
+	s.KerjasamaKurir = req.KerjasamaKurir
 	s.Alamat = req.Alamat
 	s.NPWP = req.NPWP
 	s.Catatan = req.Catatan
 	if err := h.repo.Update(s); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui supplier", nil)
 	}
-	return utils.OK(c, "supplier berhasil diperbarui", s)
+	return utils.OK(c, "supplier berhasil diperbarui", h.withStats(*s))
 }
 
 func (h *Controller) Delete(c *fiber.Ctx) error {

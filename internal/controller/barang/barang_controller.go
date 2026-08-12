@@ -182,6 +182,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		HargaBeli:   req.HargaBeli,
 		Stok:        req.Stok,
 		StokMinimum: req.StokMinimum,
+		BeratGram:   req.BeratGram,
 		IsActive:    true,
 		Deskripsi:   req.Deskripsi,
 	}
@@ -246,6 +247,7 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	b.SatuanID = req.SatuanID
 	b.HargaBeli = req.HargaBeli
 	b.Stok = req.Stok
+	b.BeratGram = req.BeratGram
 	b.StokMinimum = req.StokMinimum
 	b.Deskripsi = req.Deskripsi
 	if err := h.repo.Update(b); err != nil {

@@ -16,6 +16,7 @@ type PurchaseOrder struct {
 	DisetujuiOleh    *uint               `json:"disetujui_oleh"`
 	DisetujuiAt      *time.Time          `json:"disetujui_at"`
 	TotalEstimasi    int64               `json:"total_estimasi" gorm:"not null;default:0"`
+	IsProtected      bool                `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin
 	Items            []PurchaseOrderItem `json:"items,omitempty" gorm:"foreignKey:PurchaseOrderID"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`

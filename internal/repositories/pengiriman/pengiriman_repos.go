@@ -45,7 +45,12 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.Pengirima
 
 func (r *repository) FindByID(id uint) (*model.Pengiriman, error) {
 	var pg model.Pengiriman
-	err := r.db.Preload("GudangAsal").Preload("BarangKeluar").First(&pg, id).Error
+	err := r.db.Preload("GudangAsal").
+		Preload("BarangKeluar").
+		Preload("BarangKeluar.Items").
+		Preload("BarangKeluar.Items.Barang").
+		Preload("BarangKeluar.Items.Barang.Satuan").
+		First(&pg, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +174,16 @@ func (r *repository) Batalkan(id uint) (*model.Pengiriman, error) {
 	}
 	if res.RowsAffected == 0 {
 		return nil, errors.New(constant.ErrPGBukanDraft)
+	}
+	return r.FindByID(id)
+}
+
+// SetProtected — aksi "Protect" di action bar tabel (khusus super_admin,
+// lihat RegisterRoutes). Sama pola dengan Gudang/Barang/Supplier/PO.
+func (r *repository) SetProtected(id uint, protected bool) (*model.Pengiriman, error) {
+	if err := r.db.Model(&model.Pengiriman{}).Where("id = ?", id).
+		Update("is_protected", protected).Error; err != nil {
+		return nil, err
 	}
 	return r.FindByID(id)
 }

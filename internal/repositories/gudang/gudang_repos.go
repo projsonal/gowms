@@ -124,7 +124,12 @@ func (r *repository) ListGudang(p utils.PaginationParams) ([]model.Gudang, int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := p.Apply(q.Order(orderNamaAsc)).Find(&list).Error; err != nil {
+	// Preload Raks supaya frontend bisa menghitung "Kapasitas Terpakai"
+	// (SUM Terisi) & "Total Barang" per gudang tanpa endpoint terpisah —
+	// angka Terisi per rak sudah otomatis mutakhir lewat adjustRak() di
+	// Barang Masuk/Keluar/Stock Opname (lihat catatan di
+	// barang_masuk_repos.go), jadi tidak perlu sensor IoT tambahan.
+	if err := p.Apply(q.Order(orderNamaAsc)).Preload("Raks").Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
 	return list, total, nil

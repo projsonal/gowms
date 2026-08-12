@@ -19,7 +19,7 @@ import (
 // Ini cara paling pasti membedakan "kode belum ke-update" vs "ada bug
 // baru" saat suatu fitur backend sudah diperbaiki di source tapi masih
 // terlihat error yang sama di aplikasi.
-const CurrentVersion = "v1.2.1"
+const CurrentVersion = "v1.3.0"
 
 type VersionChanges struct {
 	New []string `json:"new,omitempty"`
@@ -36,6 +36,24 @@ type VersionEntry struct {
 // (lihat catatan panjang di file itu soal kenapa datanya dobel, bukan
 // baca-langsung dari YAML). Urutan: rilis terbaru DULU.
 var changelogData = []VersionEntry{
+	{
+		Version: "v1.3.0",
+		Date:    "11 Agustus 2026",
+		Changes: VersionChanges{
+			New: []string{
+				"Titik koordinat gudang di peta Pickup & Dropoff",
+				"Kerjasama Kurir di data Supplier (menggantikan Email) — Total Order & Rating dihitung otomatis dari data pengiriman",
+				"Resi pengiriman didesain ulang: barcode besar, SKU berawalan WRSD-, Order ID, berat barang, kontak pengirim lengkap",
+				"Cetak (Print) tersedia di seluruh tabel & laporan untuk Super Admin",
+				"Widget Traffic Pengiriman & Rekap Data di dashboard Super Admin",
+			},
+			Fix: []string{
+				"Matrix perizinan sekarang benar-benar mengendalikan tombol Tambah/Ubah/Cetak di setiap modul (sebelumnya sebagian tombol staff-only walau izin sudah diaktifkan)",
+				"Kapasitas Terpakai & Rak Penuh di Manajemen Gudang dihitung otomatis dari data rak",
+				"Peta pelacakan pengiriman tidak lagi error saat lokasi belum tersedia",
+			},
+		},
+	},
 	{
 		Version: "v1.2.1",
 		Date:    "10 Agustus 2026",

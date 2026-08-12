@@ -13,6 +13,10 @@ type Barang struct {
 	HargaBeli   int64     `json:"harga_beli" gorm:"not null;default:0"`   // rupiah/unit
 	StokMinimum int       `json:"stok_minimum" gorm:"not null;default:0"` // reorder point; 0 = tidak dipantau
 	Stok        int       `json:"stok" gorm:"not null;default:0"`         // agregat total, lihat AdjustStok()
+	// BeratGram: berat satuan barang dalam gram (opsional) — dipakai
+	// menampilkan "Berat" per item di resi pengiriman (Receipt.tsx), mirip
+	// label J&T/Shopee. Nil kalau belum diisi lewat form Tambah/Ubah Barang.
+	BeratGram   *int      `json:"berat_gram"`
 	IsActive    bool      `json:"is_active" gorm:"not null;default:true"` // nonaktif = didiskontinu, tetap tampil di histori
 	IsProtected bool      `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin — lihat internal/controller/barang Protect()
 	Deskripsi   string    `json:"deskripsi" gorm:"size:255"`

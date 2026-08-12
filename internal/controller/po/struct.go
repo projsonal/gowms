@@ -46,6 +46,12 @@ type SetujuiTolakRequest struct {
 	Catatan string `json:"catatan" validate:"max=255"`
 }
 
+// ProtectRequest — form aksi "Protect" di action bar tabel (khusus
+// super_admin). Sama pola dengan Gudang/Barang/Supplier.
+type ProtectRequest struct {
+	IsProtected *bool `json:"is_protected" validate:"required"`
+}
+
 type SummaryResponse struct {
 	TotalPO             int64 `json:"total_po"`
 	MenungguPersetujuan int64 `json:"menunggu_persetujuan"`

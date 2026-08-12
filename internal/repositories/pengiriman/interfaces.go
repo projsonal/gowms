@@ -35,6 +35,7 @@ type Repository interface {
 
 	Selesaikan(id uint, catatan string) (*model.Pengiriman, error)
 	Batalkan(id uint) (*model.Pengiriman, error)
+	SetProtected(id uint, protected bool) (*model.Pengiriman, error)
 
 	CountByStatus(status string) (int64, error)
 }

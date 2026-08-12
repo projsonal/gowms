@@ -26,10 +26,13 @@ type SatuanRequest struct {
 }
 
 type GudangRequest struct {
-	Nama      string `json:"nama" validate:"required,max=100"`
-	Alamat    string `json:"alamat" validate:"max=255"`
-	PIC       string `json:"pic" validate:"max=100"`
-	Kapasitas int    `json:"kapasitas" validate:"min=0"`
+	Nama      string   `json:"nama" validate:"required,max=100"`
+	Alamat    string   `json:"alamat" validate:"max=255"`
+	PIC       string   `json:"pic" validate:"max=100"`
+	Telepon   string   `json:"telepon" validate:"max=20"`
+	Kapasitas int      `json:"kapasitas" validate:"min=0"`
+	Latitude  *float64 `json:"latitude" validate:"omitempty,min=-90,max=90"`
+	Longitude *float64 `json:"longitude" validate:"omitempty,min=-180,max=180"`
 }
 
 // ProtectRequest — form aksi "Protect" di action bar tabel gudang (khusus

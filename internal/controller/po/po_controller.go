@@ -116,6 +116,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
+	if po.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum diubah", nil)
+	}
 
 	var req PORequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -146,6 +150,10 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	}
 	if _, err := h.requireDraft(id); err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
+	}
+	if po, err := h.repo.FindByID(id); err == nil && po.IsProtected {
+		return utils.Fail(c, fiber.StatusForbidden,
+			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum dihapus", nil)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menghapus purchase order", nil)
@@ -203,6 +211,27 @@ func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "purchase order berhasil dibatalkan", po)
 }
 
+// ProtectPO PATCH /purchase-order/:id/protect — aksi "Protect" di action
+// bar tabel. HANYA super_admin (lihat RegisterRoutes).
+func (h *Controller) ProtectPO(c *fiber.Ctx) error {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, msgIdPo, nil)
+	}
+	var req ProtectRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "payload tidak valid", nil)
+	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
+	}
+	po, err := h.repo.SetProtected(id, *req.IsProtected)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengubah status proteksi", nil)
+	}
+	return utils.OK(c, "status proteksi berhasil diubah", po)
+}
+
 // Summary GET /purchase-order/summary — kartu ringkasan dashboard PO.
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
@@ -225,6 +254,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
 	approval := middleware.RequirePermission(h.roleRepo, Module, constant.ActionApprovalReject)
 	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
+	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
@@ -235,4 +265,5 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Patch("/:id/ajukan", edit, h.Ajukan)
 	g.Patch("/:id/approval", approval, h.SetujuiTolak)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
+	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectPO) // Protect — khusus super admin
 }

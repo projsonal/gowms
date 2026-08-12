@@ -70,3 +70,28 @@ func (r *repository) CountActive() (int64, error) {
 	err := r.db.Model(&model.Supplier{}).Where("is_active = ?", true).Count(&count).Error
 	return count, err
 }
+
+// KurirStats lihat dokumentasi di interfaces.go. Query langsung ke tabel
+// pengiriman (model.Pengiriman) berdasarkan kecocokan NamaKurir — TANPA
+// join/foreign key formal, karena NamaKurir memang disimpan sebagai teks
+// bebas di Pengiriman (lihat catatan panjang soal ini di modules.ts
+// frontend). Kalau kurirNames kosong (supplier belum mengisi Kerjasama
+// Kurir), langsung kembalikan 0/0 tanpa query.
+func (r *repository) KurirStats(kurirNames []string) (int64, int64, error) {
+	if len(kurirNames) == 0 {
+		return 0, 0, nil
+	}
+	var totalOrder int64
+	if err := r.db.Model(&model.Pengiriman{}).
+		Where("nama_kurir IN ? AND status NOT IN ?", kurirNames, []string{"draft", "dibatalkan"}).
+		Count(&totalOrder).Error; err != nil {
+		return 0, 0, err
+	}
+	var terkirim int64
+	if err := r.db.Model(&model.Pengiriman{}).
+		Where("nama_kurir IN ? AND status = ?", kurirNames, "terkirim").
+		Count(&terkirim).Error; err != nil {
+		return 0, 0, err
+	}
+	return totalOrder, terkirim, nil
+}

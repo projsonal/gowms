@@ -32,6 +32,8 @@ type BarangRequest struct {
 	// field ini untuk set NILAI ABSOLUT, bukan menambah/mengurangi.
 	Stok        int    `json:"stok" validate:"min=0"`
 	StokMinimum int    `json:"stok_minimum" validate:"min=0"`
+	// BeratGram: opsional, lihat dokumentasi field di model/barang.go.
+	BeratGram   *int   `json:"berat_gram" validate:"omitempty,min=0"`
 	Deskripsi   string `json:"deskripsi" validate:"max=255"`
 }
 

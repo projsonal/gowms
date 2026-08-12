@@ -8,7 +8,11 @@ type Supplier struct {
 	Nama      string    `json:"nama" gorm:"size:150;not null;index"`
 	PIC       *string   `json:"pic" gorm:"size:100"`
 	Telepon   string    `json:"telepon" gorm:"size:20"`
-	Email     string    `json:"email" gorm:"size:100"`
+	// KerjasamaKurir menggantikan field Email lama — daftar kurir mitra
+	// (dipisah koma) untuk pengiriman barang ke lokasi tujuan atas nama
+	// supplier ini. TotalOrder/Rating di response API DIHITUNG dari sini
+	// (lihat SupplierWithStats di repository), bukan kolom tersimpan.
+	KerjasamaKurir string `json:"kerjasama_kurir" gorm:"size:255"`
 	Alamat    string    `json:"alamat" gorm:"size:255"`
 	NPWP      *string   `json:"npwp" gorm:"size:25"`
 	IsActive  bool      `json:"is_active" gorm:"not null;default:true"`

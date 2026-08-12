@@ -11,9 +11,30 @@
 # update DUA tempat ini secara bersamaan supaya tetap sinkron.
 
 app_name: StokRSD WMS
-current_version: v1.2.0
+current_version: v1.3.0
 
 versions:
+  - version: v1.3.0
+    date: 2026-08-11
+    changes:
+      new:
+        - Titik koordinat gudang di peta Pickup & Dropoff
+        - Kerjasama Kurir di data Supplier (menggantikan Email) — Total Order & Rating dihitung otomatis dari data pengiriman
+        - "Resi pengiriman didesain ulang: barcode besar, SKU berawalan WRSD-, Order ID, berat barang, kontak pengirim lengkap"
+        - Cetak (Print) tersedia di seluruh tabel & laporan untuk Super Admin
+        - Widget Traffic Pengiriman & Rekap Data di dashboard Super Admin
+      fix:
+        - Matrix perizinan sekarang benar-benar mengendalikan tombol Tambah/Ubah/Cetak di setiap modul
+        - Kapasitas Terpakai & Rak Penuh di Manajemen Gudang dihitung otomatis dari data rak
+        - Peta pelacakan pengiriman tidak lagi error saat lokasi belum tersedia
+
+  - version: v1.2.1
+    date: 2026-08-10
+    changes:
+      fix:
+        - Perbaikan format tanggal di Barang Masuk/Keluar, Pengiriman, Purchase Order, Stock Opname
+        - Bypass izin penuh untuk Super Admin di seluruh modul
+
   - version: v1.2.0
     date: 2026-08-10
     changes:

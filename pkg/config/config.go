@@ -11,32 +11,27 @@ import (
 
 // Config merepresentasikan seluruh konfigurasi aplikasi.
 type Config struct {
-	App      AppConfig
-	DB       DBConfig
-	JWT      JWTConfig
-	TOTP     TOTPConfig
-	CORS     CORSConfig
-	Storage  StorageConfig
-	Captcha  CaptchaConfig
-	BotCheck BotCheckConfig
-	WhatsApp WhatsAppConfig
-	WAOTP    WAOTPConfig
-	SMS      SMSConfig
+	App           AppConfig
+	DB            DBConfig
+	JWT           JWTConfig
+	TOTP          TOTPConfig
+	CORS          CORSConfig
+	Storage       StorageConfig
+	Captcha       CaptchaConfig
+	BotCheck      BotCheckConfig
+	WhatsApp      WhatsAppConfig
+	WAOTP         WAOTPConfig
+	SMS           SMSConfig
 	PasswordReset PasswordResetConfig
-	GeoIP    GeoIPConfig
-	Swagger  SwaggerConfig
+	GeoIP         GeoIPConfig
+	Swagger       SwaggerConfig
 }
 
 type AppConfig struct {
-	Name string
-	Env  string
-	Host string
-	Port string
-	// TrustedProxies: daftar IP/CIDR reverse proxy tepercaya (nginx) yang
-	// boleh mengisi header X-Forwarded-For — lihat EnableTrustedProxyCheck
-	// di internal/routes/router.go. Default 127.0.0.1/32 & ::1/128 (nginx
-	// satu mesin dengan app, sesuai panduan deploy Windows tanpa Docker).
-	// Override lewat env TRUSTED_PROXIES (pisah koma) kalau nginx beda mesin.
+	Name           string
+	Env            string
+	Host           string
+	Port           string
 	TrustedProxies []string
 }
 
@@ -84,22 +79,12 @@ type CaptchaConfig struct {
 }
 
 type BotCheckConfig struct {
-	// Enabled: aplikasi ini dipakai INTERNAL PERUSAHAAN saja (bukan
-	// pendaftaran publik terbuka lewat internet), jadi verifikasi
-	// captcha/bot-check secara sadar DIMATIKAN secara default — kalau
-	// suatu saat aplikasi ini dibuka untuk publik, aktifkan lagi lewat
-	// BOTCHECK_ENABLED=true tanpa perlu ubah kode sama sekali.
 	Enabled       bool
 	Secret        string
 	WindowMinutes int
 }
 
 type WhatsAppConfig struct {
-	// Driver menentukan implementasi Sender yang dipakai:
-	//   "gateway"   (default) — HTTP call ke gateway berbayar (Fonnte/Wablas/dst),
-	//                butuh APIURL+APIKey terisi.
-	//   "whatsmeow" — sesi WhatsApp Web sendiri via whatsmeow, gratis, tapi
-	//                perlu pairing sekali lewat `go run ./cmd/whatsapp-pair`.
 	Driver      string
 	APIURL      string
 	APIKey      string
@@ -112,18 +97,12 @@ type WAOTPConfig struct {
 	TTLMinutes int
 }
 
-// SMSConfig mengonfigurasi gateway pengirim SMS untuk kode OTP (verifikasi
-// nomor HP saat registrasi, dsb) — alternatif dari WhatsApp.
 type SMSConfig struct {
 	APIURL string
 	APIKey string
 	Sender string
 }
 
-// PasswordResetConfig menandatangani token sesi "lupa password" (bukan
-// kode OTP itu sendiri — itu tetap lewat pkg/otp). Token ini yang membawa
-// identitas user & tahap alur (diminta -> terverifikasi) antar 3 langkah
-// endpoint /auth/password/*.
 type PasswordResetConfig struct {
 	Secret     string
 	TTLMinutes int
@@ -170,7 +149,7 @@ func Load() *Config {
 		},
 		CORS: CORSConfig{
 
-			AllowedOrigins: splitAndTrim(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
+			AllowedOrigins: splitAndTrim(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000, http://10.11.12.173:3000")),
 		},
 		Storage: StorageConfig{
 			Path: getEnv("STORAGE_PATH", "./storage"),
@@ -219,21 +198,13 @@ func Load() *Config {
 	return cfg
 }
 
-// weakSecretDefaults adalah nilai fallback bawaan yang HANYA aman untuk
-// development — kalau ini masih terpakai di production, seluruh token JWT
-// & OTP jadi bisa dipalsukan siapa pun yang tahu kode sumber ini (kode
-// ini open, jadi nilai fallback-nya bukan rahasia).
 var weakSecretDefaults = map[string]string{
-	"JWT_ACCESS_SECRET":     "access-secret",
-	"JWT_REFRESH_SECRET":    "refresh-secret",
-	"CAPTCHA_SECRET":        "change-me-captcha-secret",
-	"BOTCHECK_SECRET":       "change-me-botcheck-secret",
+	"JWT_ACCESS_SECRET":  "access-secret",
+	"JWT_REFRESH_SECRET": "refresh-secret",
+	"CAPTCHA_SECRET":     "change-me-captcha-secret",
+	"BOTCHECK_SECRET":    "change-me-botcheck-secret",
 }
 
-// validateProductionSecrets menghentikan proses start-up (fail-fast) kalau
-// APP_ENV=production tapi ada secret keamanan yang masih memakai nilai
-// contoh bawaan. Lebih baik server gagal start dengan pesan jelas daripada
-// jalan normal dengan kunci yang bisa ditebak siapa saja.
 func validateProductionSecrets(cfg *Config) {
 	if cfg.App.Env != "production" {
 		return

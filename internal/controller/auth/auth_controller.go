@@ -21,7 +21,8 @@ const (
 	maxFailedLoginAttempts = 10
 	lockDuration           = 15 * time.Minute
 
-	otpCodeReusedMessage = "kode sudah tidak bisa digunakan, coba gunakan kode yang baru."
+	accountInactiveMessage = "Akun kamu terkunci, hubungi admin supaya bisa dibuka lagi akunnya."
+	otpCodeReusedMessage   = "kode sudah tidak bisa digunakan, coba gunakan kode yang baru."
 )
 
 func hashToken(token string) string {
@@ -70,9 +71,6 @@ func (h *Controller) issueTokens(c *fiber.Ctx, u *model.User) (*LoginResponse, e
 		return nil, err
 	}
 
-	// session.ID baru terisi (auto-increment) SETELAH SaveRefreshToken di
-	// atas — makanya access token baru dibuat sesudahnya, supaya bisa
-	// menyertakan session_id yang benar (lihat JWTClaims.SessionID).
 	access, err := h.jwtSvc.GenerateAccessToken(u.ID, u.RoleID, session.ID, r.Name)
 	if err != nil {
 		return nil, err
@@ -113,19 +111,9 @@ func (h *Controller) resolveRegisterRoleName(requestedRole string) string {
 	return requestedRole
 }
 
-// CheckUsernameAvailability godoc
-// @Summary      Cek ketersediaan username saat mengetik di form daftar
-// @Description  Dipakai untuk validasi langsung (live) di form registrasi, supaya user tahu username sudah dipakai SEBELUM submit, bukan sesudah.
-// @Tags         Auth
-// @Produce      json
-// @Param        username  query     string  true  "Username yang mau dicek"
-// @Success      200       {object}  utils.Envelope{data=object{available=bool}}
-// @Router       /stockrsd/auth/username-available [get]
 func (h *Controller) CheckUsernameAvailability(c *fiber.Ctx) error {
 	username := strings.TrimSpace(c.Query("username"))
 	if len(username) < 4 {
-		// Sama seperti validasi RegisterRequest.Username (min=4) — kalau
-		// belum memenuhi syarat minimal, tidak perlu query ke DB dulu.
 		return utils.OK(c, "username terlalu pendek", fiber.Map{"available": false})
 	}
 	_, err := h.userRepo.FindByUsername(username)
@@ -133,17 +121,6 @@ func (h *Controller) CheckUsernameAvailability(c *fiber.Ctx) error {
 	return utils.OK(c, "berhasil cek ketersediaan username", fiber.Map{"available": available})
 }
 
-// Register godoc
-// @Summary      Registrasi akun baru
-// @Description  Mendaftarkan user baru. Wajib menyertakan token & jawaban captcha yang valid.
-// @Tags         Auth
-// @Accept       json
-// @Produce      json
-// @Param        payload  body      RegisterRequest  true  "Data registrasi"
-// @Success      201      {object}  utils.Envelope{data=LoginResponse}
-// @Failure      400      {object}  utils.Envelope  "captcha gagal / payload tidak valid"
-// @Failure      409      {object}  utils.Envelope  "username/email sudah dipakai"
-// @Router       /stockrsd/auth/register [post]
 func (h *Controller) Register(c *fiber.Ctx) error {
 	var req RegisterRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -191,11 +168,6 @@ func (h *Controller) Register(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat akun", nil)
 	}
 
-	// Aplikasi internal: 2FA sekarang OPSIONAL (diaktifkan sendiri lewat
-	// Settings -> Keamanan, lihat StartTwoFactorSetup), bukan wajib saat
-	// registrasi. Jadi user LANGSUNG login begitu akun dibuat, sama
-	// seperti login normal untuk akun tanpa 2FA — tidak ada lagi langkah
-	// wajib sebelum bisa masuk.
 	res, err := h.issueTokens(c, newUser)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError,
@@ -204,16 +176,6 @@ func (h *Controller) Register(c *fiber.Ctx) error {
 	return utils.Created(c, "akun berhasil dibuat", res)
 }
 
-// ResetPassword godoc
-// @Summary      Reset password (lupa password) langsung dalam satu langkah
-// @Description  TIDAK lagi lewat OTP WhatsApp/SMS -- cukup identifier (username/email) + captcha + password baru. Lihat catatan keamanan di struct.go ResetPasswordRequest.
-// @Tags         Auth
-// @Accept       json
-// @Produce      json
-// @Param        payload  body      ResetPasswordRequest  true  "Identifier, password baru, & captcha"
-// @Success      200      {object}  utils.Envelope
-// @Failure      400      {object}  utils.Envelope  "captcha salah / akun tidak ditemukan"
-// @Router       /stockrsd/auth/password/reset [post]
 func (h *Controller) ResetPassword(c *fiber.Ctx) error {
 	var req ResetPasswordRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -229,8 +191,7 @@ func (h *Controller) ResetPassword(c *fiber.Ctx) error {
 		u, err = h.userRepo.FindByEmail(req.Identifier)
 	}
 	if err != nil {
-		// Jangan bocorkan apakah username/email-nya ada atau tidak.
-		return utils.Fail(c, fiber.StatusNotFound, "akun dengan username/email tersebut tidak ditemukan", nil)
+		return utils.Fail(c, fiber.StatusNotFound, "akun dengan username tersebut tidak ditemukan", nil)
 	}
 	if !u.IsActive {
 		return utils.Fail(c, fiber.StatusForbidden, "akun anda tidak aktif, hubungi administrator", nil)
@@ -269,11 +230,7 @@ func (h *Controller) Login(c *fiber.Ctx) error {
 		log.Printf("auth: gagal reset failed_login_attempts untuk user %d: %v", u.ID, err)
 	}
 
-	// pending token dipakai sebagai jembatan sementara antara Login -> Verifikasi OTP
-	// (hanya untuk user yang SUDAH mengaktifkan 2FA sendiri lewat Settings).
 	if !u.Is2FAEnabled {
-		// 2FA opsional (aplikasi internal) — user tanpa 2FA langsung masuk,
-		// tidak lagi dipaksa setup di titik ini.
 		res, err := h.issueTokens(c, u)
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal memproses login", nil)
@@ -303,7 +260,6 @@ func (h *Controller) loginAuthFailure(c *fiber.Ctx, u *model.User, err error, pa
 	return false
 }
 
-// loginLockedOrInactive checks lock and active status. Returns true if response written.
 func (h *Controller) loginLockedOrInactive(c *fiber.Ctx, u *model.User) bool {
 	if u.LockedUntil != nil && u.LockedUntil.After(time.Now()) {
 		_ = utils.Fail(c, fiber.StatusTooManyRequests,
@@ -311,17 +267,12 @@ func (h *Controller) loginLockedOrInactive(c *fiber.Ctx, u *model.User) bool {
 		return true
 	}
 	if !u.IsActive {
-		_ = utils.Fail(c, fiber.StatusForbidden, "akun kamu tidak aktif, silakan hubungi admin", nil)
+		_ = utils.Fail(c, fiber.StatusForbidden, accountInactiveMessage, nil)
 		return true
 	}
 	return false
 }
 
-// StartTwoFactorSetup POST /auth/2fa/start (butuh login) — dipanggil dari
-// Settings -> Keamanan saat user MEMILIH SENDIRI untuk mengaktifkan 2FA
-// (opsional, bukan wajib di alur register/login lagi). Menerbitkan
-// pendingToken baru untuk dipakai ulang di Setup2FA/ConfirmSetup2FA yang
-// sudah ada, supaya tidak perlu endpoint baru untuk generate QR/verifikasi.
 func (h *Controller) StartTwoFactorSetup(c *fiber.Ctx) error {
 	userID, ok := c.Locals(constant.CtxUserID).(uint)
 	if !ok {
@@ -358,9 +309,6 @@ func (h *Controller) Setup2FA(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusNotFound, constant.ErrUserNotFound, nil)
 	}
 
-	// Label akun di Google Authenticator: pakai email kalau user punya,
-	// fallback ke username (email sekarang opsional, banyak user tidak
-	// mengisinya sama sekali sejak form registrasi tidak lagi memintanya).
 	totpLabel := u.Email
 	if totpLabel == "" {
 		totpLabel = u.Username
@@ -390,7 +338,7 @@ func (h *Controller) ConfirmSetup2FA(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusBadRequest, "Kode OTP salah atau sudah kedaluwarsa", nil)
 	}
 	if !h.otpReplayGuard.checkAndMark(userID, req.OTPCode) {
-		return utils.Fail(c, fiber.StatusBadRequest, "Kode OTP ini sudah pernah dipakai, silakan gunakan kode baru", nil)
+		return utils.Fail(c, fiber.StatusBadRequest, otpCodeReusedMessage, nil)
 	}
 	if err := h.userRepo.UpdateTOTPSecret(userID, req.Secret, true); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengaktifkan 2FA", nil)
@@ -441,16 +389,6 @@ func (h *Controller) VerifyOTP(c *fiber.Ctx) error {
 	return utils.OK(c, "Verifikasi OTP Berhasil", res)
 }
 
-// RefreshToken godoc
-// @Summary      Perbarui access token
-// @Description  Tukar refresh token yang masih valid dengan pasangan access+refresh token baru.
-// @Tags         Auth
-// @Accept       json
-// @Produce      json
-// @Param        payload  body      RefreshTokenRequest  true  "Refresh token"
-// @Success      200      {object}  utils.Envelope{data=LoginResponse}
-// @Failure      401      {object}  utils.Envelope  "refresh token tidak valid/kedaluwarsa/di-revoke"
-// @Router       /stockrsd/auth/refresh [post]
 func (h *Controller) RefreshToken(c *fiber.Ctx) error {
 	var req RefreshTokenRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -479,15 +417,6 @@ func (h *Controller) RefreshToken(c *fiber.Ctx) error {
 	return utils.OK(c, "token berhasil diperbarui", res)
 }
 
-// Logout godoc
-// @Summary      Logout
-// @Description  Revoke seluruh sesi/refresh token milik user yang sedang login.
-// @Tags         Auth
-// @Produce      json
-// @Security     BearerAuth
-// @Success      200  {object}  utils.Envelope
-// @Failure      401  {object}  utils.Envelope
-// @Router       /stockrsd/auth/logout [post]
 func (h *Controller) Logout(c *fiber.Ctx) error {
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 	if err := h.authRepo.RevokeAllUserTokens(userID); err != nil {
@@ -548,24 +477,11 @@ func (h *Controller) RevokeSession(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mencabut sesi", nil)
 	}
 
-	// Kalau yang dicabut adalah sesi request ini SENDIRI, beri tahu
-	// frontend lewat revoked_current supaya langsung logout otomatis
-	// (access token yang sedang dipakai jadi tidak berguna lagi begitu
-	// refresh token pasangannya dicabut).
 	currentSessionID, _ := c.Locals(constant.CtxSessionID).(uint)
 	revokedCurrent := currentSessionID != 0 && currentSessionID == params.ID
 	return utils.OK(c, "sesi berhasil dicabut", fiber.Map{"revoked_current": revokedCurrent})
 }
 
-// Me godoc
-// @Summary      Profil user aktif
-// @Description  Mengambil data user yang sedang login berdasarkan access token.
-// @Tags         Auth
-// @Produce      json
-// @Security     BearerAuth
-// @Success      200  {object}  utils.Envelope{data=MeResponse}
-// @Failure      401  {object}  utils.Envelope
-// @Router       /stockrsd/auth/me [get]
 func (h *Controller) Me(c *fiber.Ctx) error {
 	userID, ok := c.Locals(constant.CtxUserID).(uint)
 	if !ok {

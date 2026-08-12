@@ -34,6 +34,8 @@ type PengirimanRequest struct {
 	NamaPenerima     string `json:"nama_penerima" validate:"required,max=150"`
 	TeleponPenerima  string `json:"telepon_penerima" validate:"max=20"`
 	AlamatTujuan     string `json:"alamat_tujuan" validate:"max=255"`
+	DestLat          *float64 `json:"dest_lat" validate:"omitempty,min=-90,max=90"`
+	DestLng          *float64 `json:"dest_lng" validate:"omitempty,min=-180,max=180"`
 	// TanggalKirim: string "YYYY-MM-DD" — lihat catatan lengkap di
 	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal soal
 	// kenapa ini WAJIB string, bukan time.Time langsung (form HTML
@@ -69,6 +71,12 @@ type LokasiRequest struct {
 
 type SelesaikanRequest struct {
 	Catatan string `json:"catatan" validate:"max=255"`
+}
+
+// ProtectRequest — form aksi "Protect" di action bar tabel (khusus
+// super_admin). Sama pola dengan Gudang/Barang/Supplier/PO.
+type ProtectRequest struct {
+	IsProtected *bool `json:"is_protected" validate:"required"`
 }
 
 type SummaryResponse struct {

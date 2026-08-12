@@ -36,7 +36,17 @@ type Gudang struct {
 	// belum bisa dihitung otomatis tanpa perubahan skema lebih besar
 	// (tabel barang_gudang) — itu di luar cakupan perbaikan kali ini.
 	PIC         string    `json:"pic" gorm:"size:100"`
+	// Telepon: nomor kontak gudang — dipakai sebagai "No. Telepon Pengirim"
+	// di resi pengiriman (Receipt.tsx) saat pengiriman berasal dari gudang
+	// ini. Opsional karena gudang lama belum tentu sudah diisi.
+	Telepon     string    `json:"telepon" gorm:"size:20"`
 	Kapasitas   int       `json:"kapasitas" gorm:"not null;default:0"`
+	// Latitude/Longitude: opsional — dipakai untuk menampilkan titik lokasi
+	// gudang di peta (lihat DeliveriesMap.tsx frontend, dipakai berdampingan
+	// dengan marker posisi kurir). Nullable karena gudang lama belum tentu
+	// sudah diisi koordinatnya lewat form Tambah/Ubah Gudang.
+	Latitude    *float64  `json:"latitude"`
+	Longitude   *float64  `json:"longitude"`
 	IsProtected bool      `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin — lihat internal/controller/gudang Protect()
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`

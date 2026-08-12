@@ -1,6 +1,7 @@
 package supplier
 
 import (
+	"github.com/projsonal/gowms/internal/model"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
 	"github.com/projsonal/gowms/pkg/utils"
@@ -21,10 +22,14 @@ type SupplierRequest struct {
 	Nama    string  `json:"nama" validate:"required,max=150"`
 	PIC     *string `json:"pic" validate:"max=100"`
 	Telepon string  `json:"telepon" validate:"max=20"`
-	Email   string  `json:"email" validate:"omitempty,email,max=100"`
-	Alamat  string  `json:"alamat" validate:"max=255"`
-	NPWP    *string `json:"npwp" validate:"max=25"`
-	Catatan string  `json:"catatan" validate:"max=255"`
+	// KerjasamaKurir: daftar nama kurir yang bekerja sama dengan supplier
+	// ini untuk pengiriman ke lokasi tujuan (dipisah koma, mis. "JNE,J&T,
+	// Lalamove") — dipakai mencocokkan ke Pengiriman.NamaKurir untuk
+	// menghitung TotalOrder & Rating (lihat SupplierWithStats).
+	KerjasamaKurir string  `json:"kerjasama_kurir" validate:"max=255"`
+	Alamat         string  `json:"alamat" validate:"max=255"`
+	NPWP           *string `json:"npwp" validate:"max=25"`
+	Catatan        string  `json:"catatan" validate:"max=255"`
 }
 
 type UpdateStatusRequest struct {
@@ -40,4 +45,17 @@ type ProtectRequest struct {
 type SummaryResponse struct {
 	TotalSupplier int64 `json:"total_supplier"`
 	SupplierAktif int64 `json:"supplier_aktif"`
+}
+
+// SupplierResponse membungkus model.Supplier dengan TotalOrder & Rating
+// hasil hitung otomatis (bukan kolom tersimpan) — lihat withStats().
+type SupplierResponse struct {
+	model.Supplier
+	// TotalOrder: jumlah pengiriman (bukan draft/dibatalkan) yang memakai
+	// salah satu kurir di KerjasamaKurir supplier ini.
+	TotalOrder int64 `json:"total_order"`
+	// Rating: hasil pelayanan (0-5) = proporsi pengiriman yang berhasil
+	// sampai tujuan ("terkirim") dari TotalOrder, diskalakan ke 5. 0 kalau
+	// belum ada order sama sekali (bukan berarti performa buruk).
+	Rating float64 `json:"rating"`
 }

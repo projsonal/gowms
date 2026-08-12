@@ -23,6 +23,7 @@ type Repository interface {
 	Ajukan(id uint, userID uint) (*model.PurchaseOrder, error)
 	SetujuiTolak(id uint, userID uint, setuju bool, catatan string) (*model.PurchaseOrder, error)
 	Batalkan(id uint) (*model.PurchaseOrder, error)
+	SetProtected(id uint, protected bool) (*model.PurchaseOrder, error)
 
 	TambahPenerimaan(tx *gorm.DB, purchaseOrderID, barangID uint, qty int) error
 

@@ -151,6 +151,16 @@ func (r *repository) Batalkan(id uint) (*model.PurchaseOrder, error) {
 	return r.FindByID(id)
 }
 
+// SetProtected — aksi "Protect" di action bar tabel (khusus super_admin,
+// lihat RegisterRoutes). Sama pola dengan Gudang/Barang/Supplier.
+func (r *repository) SetProtected(id uint, protected bool) (*model.PurchaseOrder, error) {
+	if err := r.db.Model(&model.PurchaseOrder{}).Where("id = ?", id).
+		Update("is_protected", protected).Error; err != nil {
+		return nil, err
+	}
+	return r.FindByID(id)
+}
+
 // TambahPenerimaan lihat dokumentasi di interfaces.go — dipanggil dari
 // dalam transaksi Barang Masuk.
 func (r *repository) TambahPenerimaan(tx *gorm.DB, purchaseOrderID, barangID uint, qty int) error {
