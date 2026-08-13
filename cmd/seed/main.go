@@ -20,6 +20,7 @@ var modules = []string{
 	constant.ModuleBarangMasuk, constant.ModuleBarangKeluar,
 	constant.ModuleStockOpname, constant.ModulePengiriman,
 	constant.ModuleLaporan, constant.ModuleManajemenUser, constant.ModuleSettings, "notifikasi", constant.ModuleCOD,
+	constant.ModuleAsetGudang, constant.ModuleBarangRusak,
 }
 var actions = []string{constant.ActionView, constant.ActionTambah, constant.ActionEdit, constant.ActionApprovalReject, constant.ActionPrint, constant.ActionAssignDelegasi}
 
@@ -114,6 +115,23 @@ func findOrCreateGudang(db *gorm.DB, nama, alamat string) model.Gudang {
 	if db.Where("nama = ?", nama).First(&g).Error == gorm.ErrRecordNotFound {
 		g = model.Gudang{Nama: nama, Alamat: alamat}
 		db.Create(&g)
+	}
+	return g
+}
+
+// findOrCreateGudangDenganKode sama seperti findOrCreateGudang, tapi juga
+// mengisi/menyinkronkan Kode gudang (prefix label RSD aset, mis. "BBU",
+// "MAHANG" — lihat internal/controller/asset Create()).
+func findOrCreateGudangDenganKode(db *gorm.DB, nama, alamat, kode string) model.Gudang {
+	var g model.Gudang
+	if db.Where("nama = ?", nama).First(&g).Error == gorm.ErrRecordNotFound {
+		g = model.Gudang{Nama: nama, Alamat: alamat, Kode: kode}
+		db.Create(&g)
+		return g
+	}
+	if g.Kode == "" {
+		g.Kode = kode
+		db.Save(&g)
 	}
 	return g
 }
@@ -269,8 +287,8 @@ func seedSampleData(db *gorm.DB, adminID uint) {
 
 	kat := findOrCreateKategori(db, "Alkes")
 	sat := findOrCreateSatuan(db, "Box", "bx")
-	g1 := findOrCreateGudang(db, "Gudang 1 Cimahi", "Cimahi -7.02090991881257, 107.64954118009624")
-	g2 := findOrCreateGudang(db, "Gudang 2 Bandung Lt.3", "Bandung Lt.3 -6.922156836137817, 107.61645745311088")
+	g1 := findOrCreateGudangDenganKode(db, "Gudang 1 Cimahi", "Cimahi -7.02090991881257, 107.64954118009624", "BBU")
+	g2 := findOrCreateGudangDenganKode(db, "Gudang 2 Bandung Lt.3", "Bandung Lt.3 -6.922156836137817, 107.61645745311088", "MAHANG")
 	suppliers := seedSuppliers(db)
 	seedBarang(db, kat.ID, sat.ID)
 

@@ -3,11 +3,12 @@ package task
 import (
 	"github.com/projsonal/gowms/internal/repositories/role"
 	taskRepo "github.com/projsonal/gowms/internal/repositories/task"
-	"github.com/projsonal/gowms/pkg/constant"
+
+	//"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-const Module = constant.ModuleTaskManagement
+const Module = "task"
 
 type Controller struct {
 	repo     taskRepo.Repository
@@ -32,8 +33,8 @@ type UpdateStatusRequest struct {
 }
 
 type SummaryResponse struct {
-	Total    int64 `json:"total"`
-	Proses   int64 `json:"proses"`
+	Total     int64 `json:"total"`
+	Proses    int64 `json:"proses"`
 	Terlambat int64 `json:"terlambat"`
-	Selesai  int64 `json:"selesai"`
+	Selesai   int64 `json:"selesai"`
 }

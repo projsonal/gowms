@@ -2,6 +2,7 @@ package gudang
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -233,8 +234,13 @@ func (h *Controller) CreateGudang(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
 	}
 
+	kode := strings.ToUpper(strings.TrimSpace(req.Kode))
+	if existing, err := h.repo.FindGudangByKode(kode); err == nil && existing != nil {
+		return utils.Fail(c, fiber.StatusConflict, "kode gudang sudah digunakan", nil)
+	}
+
 	g := &model.Gudang{
-		Nama: req.Nama, Alamat: req.Alamat, PIC: req.PIC, Telepon: req.Telepon, Kapasitas: req.Kapasitas,
+		Nama: req.Nama, Kode: kode, Alamat: req.Alamat, PIC: req.PIC, Telepon: req.Telepon, Kapasitas: req.Kapasitas,
 		Latitude: req.Latitude, Longitude: req.Longitude,
 	}
 	if err := h.repo.CreateGudang(g); err != nil {
@@ -266,7 +272,15 @@ func (h *Controller) UpdateGudang(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
 	}
 
+	kode := strings.ToUpper(strings.TrimSpace(req.Kode))
+	if kode != g.Kode {
+		if existing, err := h.repo.FindGudangByKode(kode); err == nil && existing != nil && existing.ID != g.ID {
+			return utils.Fail(c, fiber.StatusConflict, "kode gudang sudah digunakan", nil)
+		}
+	}
+
 	g.Nama = req.Nama
+	g.Kode = kode
 	g.Alamat = req.Alamat
 	g.PIC = req.PIC
 	g.Telepon = req.Telepon

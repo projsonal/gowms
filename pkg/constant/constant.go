@@ -31,7 +31,28 @@ const (
 	ModulePengiriman      = "pengiriman"
 	ModuleLaporan         = "laporan"
 	ModuleCOD             = "cod"
-	ModuleTaskManagement  = "tasks"
+	// ModuleAsetGudang: modul Manajemen Aset Gudang (pengganti Task
+	// Management) — tiang, ODC, ONT, ODP, OLT, transportasi.
+	ModuleAsetGudang = "aset_gudang"
+	// ModuleBarangRusak: modul Barang Rusak (retur/rusak).
+	ModuleBarangRusak = "barang_rusak"
+)
+
+// Jenis aset gudang yang didukung modul Manajemen Aset (lihat model.Asset).
+const (
+	JenisAsetTiang        = "tiang"
+	JenisAsetODC          = "odc"
+	JenisAsetONT          = "ont"
+	JenisAsetODP          = "odp"
+	JenisAsetOLT          = "olt"
+	JenisAsetTransportasi = "transportasi"
+)
+
+// Status pemeriksaan Barang Rusak (lihat model.BarangRusak).
+const (
+	StatusPengecekan = "pengecekan"
+	StatusRetur      = "retur"
+	StatusRusak      = "rusak"
 )
 
 // Fiber Locals context key, di-set oleh middleware auth setelah JWT valid.

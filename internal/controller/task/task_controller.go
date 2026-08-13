@@ -25,9 +25,6 @@ func parseTanggal(raw string) (time.Time, error) {
 	return time.Parse("2006-01-02", raw)
 }
 
-// List GET /tasks?page=&limit=&search=&status=
-// super_admin & admin melihat SEMUA tugas (mereka yang menugaskan).
-// karyawan HANYA melihat tugas yang ditugaskan ke dirinya sendiri.
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := taskRepo.Filter{Status: c.Query("status", "")}

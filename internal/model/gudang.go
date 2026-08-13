@@ -24,6 +24,11 @@ func (Satuan) TableName() string { return "satuan" }
 type Gudang struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Nama        string    `json:"nama" gorm:"size:100;not null"`
+	// Kode: kode singkat gudang (mis. "BBU", "MAHANG") — dipakai sebagai
+	// prefix label RSD aset gudang, format {KODE}-RSD-{nomor urut per
+	// gudang}, lihat model.Asset & internal/controller/asset. Disimpan
+	// UPPERCASE, unik per gudang (lihat gudang_controller.go Create/Update).
+	Kode        string    `json:"kode" gorm:"size:20;uniqueIndex"`
 	Alamat      string    `json:"alamat" gorm:"size:255"`
 	// PIC & Kapasitas: SEBELUMNYA tidak ada di model sama sekali walau
 	// tabel Manajemen Gudang di frontend SUDAH LAMA menampilkan kolom

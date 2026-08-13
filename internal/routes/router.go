@@ -98,7 +98,8 @@ func SetupRouter(deps *Dependencies) *fiber.App {
 		deps.StockOpnameController,
 		deps.PengirimanController,
 		deps.CodController,
-		deps.TaskController,
+		deps.AssetController,
+		deps.BarangRusakController,
 		deps.LaporanController,
 		deps.DashboardController,
 	}

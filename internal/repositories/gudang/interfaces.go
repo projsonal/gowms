@@ -26,6 +26,7 @@ type Repository interface {
 	// Gudang
 	ListGudang(p utils.PaginationParams) ([]model.Gudang, int64, error)
 	FindGudangByID(id uint) (*model.Gudang, error)
+	FindGudangByKode(kode string) (*model.Gudang, error)
 	CreateGudang(g *model.Gudang) error
 	UpdateGudang(g *model.Gudang) error
 	DeleteGudang(id uint) error

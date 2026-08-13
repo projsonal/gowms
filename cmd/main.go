@@ -3,14 +3,6 @@ package main
 import (
 	"log"
 
-	// Import package docs (generated swaggo/swag) yang mendaftarkan spec
-	// Swagger ke registry global lewat init(). TANPA baris ini, halaman
-	// /swagger/index.html tampil kosong/putih total — swagger-ui berhasil
-	// dimuat tapi tidak menemukan spec apa pun untuk dirender karena
-	// docs.go tidak pernah ter-link ke binary (package Go yang tidak
-	// diimpor di mana pun tidak akan dikompilasi masuk). Dipakai juga di
-	// bawah untuk mengisi BasePath supaya tombol "Try it out" di Swagger
-	// UI memanggil endpoint yang benar (/stockrsd/..., bukan /...).
 	"github.com/projsonal/gowms/docs"
 	"github.com/projsonal/gowms/internal/controller/appinfo"
 	"github.com/projsonal/gowms/internal/routes"

@@ -143,6 +143,17 @@ func (r *repository) FindGudangByID(id uint) (*model.Gudang, error) {
 	return &g, nil
 }
 
+func (r *repository) FindGudangByKode(kode string) (*model.Gudang, error) {
+	if kode == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var g model.Gudang
+	if err := r.db.Where("kode = ?", kode).First(&g).Error; err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
 func (r *repository) CreateGudang(g *model.Gudang) error {
 	return r.db.Create(g).Error
 }

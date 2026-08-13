@@ -34,10 +34,10 @@ func (h *Controller) buildSessionInfo(c *fiber.Ctx) (device utils.DeviceInfo, ip
 	device = utils.ParseUserAgent(c.Get("User-Agent"))
 	ip = c.IP()
 
-	location, err := h.geoipSvc.Lookup(ip)
+	location, err := h.geoipSvc.Lookup(c.Context(), ip)
 	if err != nil {
 		log.Printf("auth: lookup geoip untuk IP %s gagal: %v", ip, err)
-		location = "-"
+		location = ""
 	}
 	return device, ip, location
 }

@@ -127,7 +127,7 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	args := []any{}
 	if !since.IsZero() {
 		sinceFilter = "WHERE created_at > ?"
-		args = append(args, since, since, since, since, since)
+		args = append(args, since, since, since, since, since, since)
 	}
 	_ = sinceFilter
 	// Untuk barang_masuk & barang_keluar, karyawan HANYA perlu diberi tahu
@@ -155,22 +155,25 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	  SELECT 'so-' || so.id::text, 'Stock Opname', so.nomor_opname, 'opname', so.created_at
 	  FROM stock_opname so ` + optWhere(!since.IsZero()) + `
 	  UNION ALL
-	  SELECT 'tsk-' || t.id::text, 'Tugas Baru Diberikan', t.title, 'task', t.created_at
-	  FROM tasks t
-	  WHERE t.assigned_to = ? ` + optAnd(!since.IsZero(), "t.created_at") + `
+	  SELECT 'ast-' || a.id::text, 'Aset Baru Ditambahkan', a.nama, 'new_asset', a.created_at
+	  FROM assets a ` + optWhere(!since.IsZero()) + `
+	  UNION ALL
+	  SELECT 'brk-' || br.id::text, 'Laporan Barang Rusak', br.nama_barang, 'barang_rusak', br.created_at
+	  FROM barang_rusak br
+	  WHERE br.dilaporkan_oleh = ? ` + optAnd(!since.IsZero(), "br.created_at") + `
 	  UNION ALL
 	  SELECT 'brg-' || b.id::text, 'Barang Baru Ditambahkan', b.nama, 'new_item', b.created_at
 	  FROM barang b
 	  WHERE b.approval_status = 'disetujui' ` + optAnd(!since.IsZero(), "b.created_at") + `
 	  ORDER BY created_at DESC LIMIT 20
 	`
-	// t.assigned_to = ? WAJIB ditaruh SEBELUM parameter `since` lain di
-	// UNION notif tugas (urutan placeholder "?" di raw SQL mengikuti urutan
-	// literal dalam teks query, bukan urutan UNION-nya) — makanya userID
-	// disisipkan tepat sebelum since-arg milik blok tasks di akhir daftar.
+	// br.dilaporkan_oleh = ? WAJIB ditaruh SEBELUM parameter `since` lain di
+	// UNION notif barang rusak (urutan placeholder "?" di raw SQL mengikuti
+	// urutan literal dalam teks query, bukan urutan UNION-nya) — makanya
+	// userID disisipkan tepat sebelum since-arg milik blok barang_rusak.
 	args = append(args, userID)
 	if !since.IsZero() {
-		args = append(args, since) // since milik blok tasks
+		args = append(args, since) // since milik blok barang_rusak
 		args = append(args, since) // since milik blok barang baru (UNION paling akhir)
 	}
 	tx := db.Raw(q, args...).Scan(&rows)

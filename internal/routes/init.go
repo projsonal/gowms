@@ -1,43 +1,46 @@
 package routes
 
 import (
+	"log"
 	"time"
 
 	"gorm.io/gorm"
 
+	appinfoController "github.com/projsonal/gowms/internal/controller/appinfo"
+	assetController "github.com/projsonal/gowms/internal/controller/asset_gudang"
 	authController "github.com/projsonal/gowms/internal/controller/auth"
 	barangController "github.com/projsonal/gowms/internal/controller/barang"
 	barangKeluarController "github.com/projsonal/gowms/internal/controller/barang_keluar"
 	barangMasukController "github.com/projsonal/gowms/internal/controller/barang_masuk"
+	barangRusakController "github.com/projsonal/gowms/internal/controller/barang_rusak"
 	captchaController "github.com/projsonal/gowms/internal/controller/captcha"
+	codController "github.com/projsonal/gowms/internal/controller/cod"
 	dashboardController "github.com/projsonal/gowms/internal/controller/dashboard"
 	gudangController "github.com/projsonal/gowms/internal/controller/gudang"
 	laporanController "github.com/projsonal/gowms/internal/controller/laporan"
 	maintenanceController "github.com/projsonal/gowms/internal/controller/maintenance"
-	codController "github.com/projsonal/gowms/internal/controller/cod"
 	pengirimanController "github.com/projsonal/gowms/internal/controller/pengiriman"
 	purchaseOrderController "github.com/projsonal/gowms/internal/controller/po"
 	roleController "github.com/projsonal/gowms/internal/controller/role"
 	securityController "github.com/projsonal/gowms/internal/controller/security"
 	stockOpnameController "github.com/projsonal/gowms/internal/controller/stockOpname"
 	supplierController "github.com/projsonal/gowms/internal/controller/supplier"
-	appinfoController "github.com/projsonal/gowms/internal/controller/appinfo"
-	taskController "github.com/projsonal/gowms/internal/controller/task"
 	usersController "github.com/projsonal/gowms/internal/controller/users"
 	"github.com/projsonal/gowms/internal/health"
+	assetRepo "github.com/projsonal/gowms/internal/repositories/asset"
 	authRepo "github.com/projsonal/gowms/internal/repositories/auth"
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	barangKeluarRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	barangMasukRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
+	barangRusakRepo "github.com/projsonal/gowms/internal/repositories/barang_rusak"
+	codRepo "github.com/projsonal/gowms/internal/repositories/cod"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
 	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
-	codRepo "github.com/projsonal/gowms/internal/repositories/cod"
 	pengirimanRepo "github.com/projsonal/gowms/internal/repositories/pengiriman"
 	purchaseOrderRepo "github.com/projsonal/gowms/internal/repositories/po"
 	roleRepo "github.com/projsonal/gowms/internal/repositories/role"
 	stockOpnameRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
-	taskRepo "github.com/projsonal/gowms/internal/repositories/task"
 	usersRepo "github.com/projsonal/gowms/internal/repositories/users"
 	"github.com/projsonal/gowms/pkg/botcheck"
 	"github.com/projsonal/gowms/pkg/captcha"
@@ -68,7 +71,8 @@ type Dependencies struct {
 	StockOpnameController   *stockOpnameController.Controller
 	PengirimanController    *pengirimanController.Controller
 	CodController           *codController.Controller
-	TaskController          *taskController.Controller
+	AssetController         *assetController.Controller
+	BarangRusakController   *barangRusakController.Controller
 	AppInfoController       *appinfoController.Controller
 
 	LaporanController   *laporanController.Controller
@@ -99,7 +103,8 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	rStockOpname := stockOpnameRepo.New(db)
 	rPengiriman := pengirimanRepo.New(db)
 	rCod := codRepo.New(db)
-	rTask := taskRepo.New(db)
+	rAsset := assetRepo.New(db)
+	rBarangRusak := barangRusakRepo.New(db)
 	rMaintenance := maintenanceRepo.New(db)
 
 	// Services lintas modul.
@@ -135,7 +140,8 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	cStockOpname := stockOpnameController.New(rStockOpname, rBarang, rGudang, rRole, jwtSvc)
 	cPengiriman := pengirimanController.New(rPengiriman, rGudang, rBarangKeluar, rRole, jwtSvc)
 	cCod := codController.New(rCod, rRole, jwtSvc)
-	cTask := taskController.New(rTask, rRole, jwtSvc)
+	cAsset := assetController.New(rAsset, rGudang, rRole, jwtSvc)
+	cBarangRusak := barangRusakController.New(rBarangRusak, rBarang, rRole, jwtSvc)
 	cLaporan := laporanController.New(rBarang, rPO, rBarangMasuk, rBarangKeluar, rStockOpname, rRole, jwtSvc)
 	cDashboard := dashboardController.New(rBarang, rGudang, rSupplier, rPO, rBarangMasuk, rBarangKeluar, rStockOpname, rPengiriman, rRole, jwtSvc, db)
 	cCaptcha := captchaController.New(captchaSvc)
@@ -161,7 +167,8 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 		StockOpnameController:   cStockOpname,
 		PengirimanController:    cPengiriman,
 		CodController:           cCod,
-		TaskController:          cTask,
+		AssetController:         cAsset,
+		BarangRusakController:   cBarangRusak,
 		AppInfoController:       appinfoController.New(),
 		LaporanController:       cLaporan,
 		DashboardController:     cDashboard,
@@ -177,5 +184,11 @@ func newGeoIPResolver(cfg *config.Config) geoip.Resolver {
 	if !cfg.GeoIP.Enabled {
 		return geoip.NoopResolver{}
 	}
-	return geoip.NewHTTPResolver(cfg.GeoIP.BaseURL)
+
+	resolver, err := geoip.NewHTTPResolver(cfg.GeoIP.BaseURL)
+	if err != nil {
+		log.Printf("geoip: konfigurasi GEOIP_BASE_URL tidak valid, fallback ke NoopResolver: %v", err)
+		return geoip.NoopResolver{}
+	}
+	return resolver
 }

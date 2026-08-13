@@ -10,10 +10,5 @@ type Repository interface {
 	ListActiveSessions(userID uint) ([]model.RefreshToken, error)
 	RevokeSession(userID, sessionID uint) error
 
-	// OnlineUserIDs — dari daftar userID, kembalikan yang mana saja
-	// SEDANG punya sesi aktif (refresh token belum dicabut & belum
-	// kedaluwarsa). Dipakai kolom "Status" (Aktif/Nonaktif) di Manajemen
-	// User supaya mencerminkan status login SAAT INI, bukan flag
-	// aktif/nonaktif akun (yang itu field IsActive terpisah di model.User).
 	OnlineUserIDs(userIDs []uint) (map[uint]bool, error)
 }
