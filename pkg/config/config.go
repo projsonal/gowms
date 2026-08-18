@@ -18,6 +18,7 @@ type Config struct {
 	CORS          CORSConfig
 	Storage       StorageConfig
 	Captcha       CaptchaConfig
+	HumanCheck    HumanCheckConfig
 	BotCheck      BotCheckConfig
 	WhatsApp      WhatsAppConfig
 	WAOTP         WAOTPConfig
@@ -76,6 +77,14 @@ type StorageConfig struct {
 type CaptchaConfig struct {
 	Secret     string
 	TTLMinutes int
+}
+
+// HumanCheckConfig konfigurasi verifikasi "verify you are human" ala
+// Cloudflare Turnstile (lihat pkg/humancheck) yang dipakai ResetPassword.
+type HumanCheckConfig struct {
+	Secret          string
+	TTLMinutes      int
+	MinDelaySeconds int
 }
 
 type BotCheckConfig struct {
@@ -158,6 +167,11 @@ func Load() *Config {
 			Secret:     getEnv("CAPTCHA_SECRET", "change-me-captcha-secret"),
 			TTLMinutes: getEnvAsInt("CAPTCHA_TTL_MINUTES", 5),
 		},
+		HumanCheck: HumanCheckConfig{
+			Secret:          getEnv("HUMANCHECK_SECRET", "change-me-humancheck-secret"),
+			TTLMinutes:      getEnvAsInt("HUMANCHECK_TTL_MINUTES", 10),
+			MinDelaySeconds: getEnvAsInt("HUMANCHECK_MIN_DELAY_SECONDS", 2),
+		},
 		BotCheck: BotCheckConfig{
 			Enabled:       getEnvAsBool("BOTCHECK_ENABLED", false),
 			Secret:        getEnv("BOTCHECK_SECRET", "change-me-botcheck-secret"),
@@ -202,6 +216,7 @@ var weakSecretDefaults = map[string]string{
 	"JWT_ACCESS_SECRET":  "access-secret",
 	"JWT_REFRESH_SECRET": "refresh-secret",
 	"CAPTCHA_SECRET":     "change-me-captcha-secret",
+	"HUMANCHECK_SECRET":  "change-me-humancheck-secret",
 	"BOTCHECK_SECRET":    "change-me-botcheck-secret",
 }
 
@@ -213,6 +228,7 @@ func validateProductionSecrets(cfg *Config) {
 		"JWT_ACCESS_SECRET":  cfg.JWT.AccessSecret,
 		"JWT_REFRESH_SECRET": cfg.JWT.RefreshSecret,
 		"CAPTCHA_SECRET":     cfg.Captcha.Secret,
+		"HUMANCHECK_SECRET":  cfg.HumanCheck.Secret,
 		"BOTCHECK_SECRET":    cfg.BotCheck.Secret,
 	}
 	var insecure []string

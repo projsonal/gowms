@@ -177,7 +177,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
 	g.Post("/", tambah, h.Create)                      // Add / Insert
-	g.Put("/:id", edit, h.Update)                       // Change
-	g.Delete("/:id", onlyStaff, edit, h.Delete)          // Delete
-	g.Patch("/:id/protect", onlySuperAdmin, h.Protect)   // Protect
+	g.Put("/:id", edit, h.Update)                      // Change
+	g.Delete("/:id", onlyStaff, edit, h.Delete)        // Delete
+	g.Patch("/:id/protect", onlySuperAdmin, h.Protect) // Protect
 }

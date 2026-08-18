@@ -22,113 +22,48 @@ var blockedIPNetworks = mustParseCIDRs(
 	"fe80::/10",
 )
 
-
-
 func isPublicIP(ipAddress string) bool {
-
 	ip := parseHostIP(ipAddress)
-
 	if ip == nil {
 		return false
 	}
-
-
 	return !isBlockedIP(ip)
 }
 
-
-
 func isBlockedIP(ip net.IP) bool {
-
-
-	if ip.IsLoopback() {
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsPrivate() {
 		return true
 	}
-
-
-	if ip.IsUnspecified() {
-		return true
-	}
-
-
-	if ip.IsMulticast() {
-		return true
-	}
-
-
-	if ip.IsPrivate() {
-		return true
-	}
-
-
 	return containsBlockedNetwork(ip)
 }
 
 func containsBlockedNetwork(ip net.IP) bool {
-
 	for _, network := range blockedIPNetworks {
-
 		if network.Contains(ip) {
 			return true
 		}
 	}
-
-
 	return false
 }
 
+// parseHostIP mem-parse alamat IP dari string, membuang zone suffix IPv6
+// (mis. "fe80::1%eth0" -> "fe80::1") sebelum parsing.
 func parseHostIP(value string) net.IP {
-
-
-	value =
-		strings.TrimSpace(value)
-
-
-	if index :=
-		strings.IndexByte(value,'%');
-	index >= 0 {
-
-		value =
-			value[:index]
+	value = strings.TrimSpace(value)
+	if index := strings.IndexByte(value, '%'); index >= 0 {
+		value = value[:index]
 	}
-
-
 	return net.ParseIP(value)
 }
 
-
-
-func mustParseCIDRs(
-	cidrs ...string,
-) []*net.IPNet {
-
-
-	networks :=
-		make([]*net.IPNet,0,len(cidrs))
-
-
-	for _,cidr := range cidrs {
-
-
-		_,network,err :=
-			net.ParseCIDR(cidr)
-
-
+func mustParseCIDRs(cidrs ...string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, network, err := net.ParseCIDR(cidr)
 		if err != nil {
-
-			panic(
-				"geoip: invalid CIDR "+cidr,
-			)
+			panic("geoip: invalid CIDR " + cidr)
 		}
-
-
-		networks =
-			append(
-				networks,
-				network,
-			)
+		networks = append(networks, network)
 	}
-
-
 	return networks
 }

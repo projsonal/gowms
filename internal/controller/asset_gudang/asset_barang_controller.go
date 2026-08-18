@@ -2,7 +2,9 @@ package assetgudang
 
 import (
 	"fmt"
+	"log"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -21,7 +23,17 @@ func parseIDParam(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
-// List GET /aset?jenis_aset=&gudang_id=&status=&page=&limit=&search=
+func handleCreateOrUpdateError(c *fiber.Ctx, action string, err error) error {
+	log.Printf("aset_gudang: gagal %s aset: %v", action, err)
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint") {
+		return utils.Fail(c, fiber.StatusConflict,
+			"nomor label aset ini kebetulan sudah dipakai (kemungkinan sisa aset yang sudah dihapus di Tempat Sampah) — coba simpan sekali lagi", nil)
+	}
+	return utils.Fail(c, fiber.StatusInternalServerError, fmt.Sprintf("gagal %s aset", action), nil)
+}
+
+// List GET
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
@@ -37,7 +49,7 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar aset berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /aset/:id
+// Detail
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -50,26 +62,53 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	return utils.OK(c, "detail aset berhasil diambil", a)
 }
 
-// Summary GET /aset/summary — ringkasan jumlah aset per jenis, dipakai
-// kartu ringkasan di halaman Manajemen Aset (mirip Task Summary lama).
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	tiang, _ := h.repo.CountByJenis(constant.JenisAsetTiang)
 	odc, _ := h.repo.CountByJenis(constant.JenisAsetODC)
+	olt, _ := h.repo.CountByJenis(constant.JenisAsetOLT)
 	ont, _ := h.repo.CountByJenis(constant.JenisAsetONT)
 	odp, _ := h.repo.CountByJenis(constant.JenisAsetODP)
-	olt, _ := h.repo.CountByJenis(constant.JenisAsetOLT)
+	modem, _ := h.repo.CountByJenis(constant.JenisAsetModem)
 	transportasi, _ := h.repo.CountByJenis(constant.JenisAsetTransportasi)
 	return utils.OK(c, "ringkasan aset berhasil diambil", SummaryResponse{
-		Tiang: tiang, Odc: odc, Ont: ont, Odp: odp, Olt: olt, Transportasi: transportasi,
-		Total: tiang + odc + ont + odp + olt + transportasi,
+		Tiang: tiang, Odc: odc, Olt: olt, Ont: ont, Odp: odp, Modem: modem, Transportasi: transportasi,
+		Total: tiang + odc + olt + ont + odp + modem + transportasi,
 	})
 }
 
-// Create POST /aset — label RSD / kode BA dibuat OTOMATIS oleh server,
-// TIDAK boleh dikirim dari klien, supaya format & urutannya konsisten:
-//   - tiang/odc/ont/odp/olt: "{KodeGudang}-RSD-{nomor urut per gudang}",
-//     wajib menyertakan koordinat (latitude & longitude).
-//   - transportasi: "BA-{nomor urut global}", tanpa koordinat.
+func (h *Controller) MapPoints(c *fiber.Ctx) error {
+	f := assetRepo.Filter{
+		JenisAset: c.Query("jenis_aset", ""),
+		Status:    c.Query("status", ""),
+	}
+	if gudangID, err := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64); err == nil {
+		f.GudangID = uint(gudangID)
+	}
+	tipeGudang := c.Query("tipe_gudang", "")
+	if tipeGudang != "" && tipeGudang != constant.TipeGudangPusat && tipeGudang != constant.TipeGudangCabang {
+		return utils.Fail(c, fiber.StatusBadRequest, "tipe_gudang harus 'pusat' atau 'cabang'", nil)
+	}
+
+	points, err := h.repo.ListForMap(f, tipeGudang)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengambil titik peta aset", nil)
+	}
+
+	out := make([]MapPoint, 0, len(points))
+	for _, p := range points {
+		out = append(out, MapPoint{
+			ID: p.ID, Nama: p.Nama, JenisAset: p.JenisAset, LabelRSD: p.LabelRSD,
+			Latitude: p.Latitude, Longitude: p.Longitude, Status: p.Status,
+			IPAddress: p.IPAddress, PingStatus: p.PingStatus,
+			GudangID: p.GudangID, GudangNama: p.GudangNama, GudangKode: p.GudangKode, GudangTipe: p.GudangTipe,
+			GudangLatitude: p.GudangLatitude, GudangLongitude: p.GudangLongitude,
+			ParentAssetID: p.ParentAssetID, ParentLatitude: p.ParentLatitude, ParentLongitude: p.ParentLongitude,
+			JumlahPort: p.JumlahPort, PortTerisi: p.PortTerisi,
+		})
+	}
+	return utils.OK(c, "titik peta aset berhasil diambil", out)
+}
+
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req AssetRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -80,13 +119,27 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
 	}
+	if req.ParentAssetID != nil {
+		parent, perr := h.repo.FindByID(*req.ParentAssetID)
+		if perr != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "aset induk tidak ditemukan", nil)
+		}
+		if !model.JenisIndukValid(req.JenisAset, parent.JenisAset) {
+			return utils.Fail(c, fiber.StatusUnprocessableEntity,
+				fmt.Sprintf("%s tidak bisa berinduk ke %s — cek urutan hierarki jaringan (OLT -> ODC -> ODP -> ONT)", req.JenisAset, parent.JenisAset), nil)
+		}
+	}
 
 	a := &model.Asset{
-		Nama:       req.Nama,
-		JenisAset:  req.JenisAset,
-		GudangID:   req.GudangID,
-		Keterangan: req.Keterangan,
-		Status:     "aktif",
+		Nama:          req.Nama,
+		JenisAset:     req.JenisAset,
+		GudangID:      req.GudangID,
+		Keterangan:    req.Keterangan,
+		IPAddress:     req.IPAddress,
+		ParentAssetID: req.ParentAssetID,
+		JumlahPort:    req.JumlahPort,
+		Status:        "aktif",
+		PingStatus:    "unknown",
 	}
 
 	if model.JenisAsetPunyaKoordinat(req.JenisAset) {
@@ -114,15 +167,13 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	}
 
 	if err := h.repo.Create(a); err != nil {
-		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat aset", nil)
+		return handleCreateOrUpdateError(c, "membuat", err)
 	}
+	h.logHistory(c, a.ID, "dibuat", "", a.Status, "Aset ditambahkan ke sistem")
 	created, _ := h.repo.FindByID(a.ID)
 	return utils.Created(c, "aset berhasil dibuat", created)
 }
 
-// Update PUT /aset/:id — label RSD / kode BA TIDAK BISA diubah lewat
-// endpoint ini (identitas aset harus tetap), hanya data deskriptif &
-// (untuk aset berkoordinat) titik lokasinya.
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -137,9 +188,28 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	if req.ParentAssetID != nil {
+		if *req.ParentAssetID == a.ID {
+			return utils.Fail(c, fiber.StatusUnprocessableEntity, "aset tidak bisa jadi induk untuk dirinya sendiri", nil)
+		}
+		parent, perr := h.repo.FindByID(*req.ParentAssetID)
+		if perr != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "aset induk tidak ditemukan", nil)
+		}
+		if !model.JenisIndukValid(a.JenisAset, parent.JenisAset) {
+			return utils.Fail(c, fiber.StatusUnprocessableEntity,
+				fmt.Sprintf("%s tidak bisa berinduk ke %s — cek urutan hierarki jaringan (OLT -> ODC -> ODP -> ONT)", a.JenisAset, parent.JenisAset), nil)
+		}
+	}
+
+	oldParentID := a.ParentAssetID
+	oldLat, oldLng := a.Latitude, a.Longitude
 
 	a.Nama = req.Nama
 	a.Keterangan = req.Keterangan
+	a.IPAddress = req.IPAddress
+	a.ParentAssetID = req.ParentAssetID
+	a.JumlahPort = req.JumlahPort
 	if model.JenisAsetPunyaKoordinat(a.JenisAset) {
 		if req.Latitude == nil || req.Longitude == nil {
 			return utils.Fail(c, fiber.StatusUnprocessableEntity,
@@ -149,12 +219,50 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 		a.Longitude = req.Longitude
 	}
 	if err := h.repo.Update(a); err != nil {
-		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui aset", nil)
+		return handleCreateOrUpdateError(c, "memperbarui", err)
+	}
+
+	if !samePtrUint(oldParentID, a.ParentAssetID) {
+		h.logHistory(c, a.ID, "induk", ptrUintLabel(oldParentID), ptrUintLabel(a.ParentAssetID), "Aset induk (hierarki jaringan) diubah")
+	}
+	if !samePtrFloat(oldLat, a.Latitude) || !samePtrFloat(oldLng, a.Longitude) {
+		h.logHistory(c, a.ID, "lokasi",
+			fmt.Sprintf("%s, %s", ptrFloatLabel(oldLat), ptrFloatLabel(oldLng)),
+			fmt.Sprintf("%s, %s", ptrFloatLabel(a.Latitude), ptrFloatLabel(a.Longitude)),
+			"Titik koordinat lokasi diubah")
 	}
 	return utils.OK(c, "aset berhasil diperbarui", a)
 }
 
-// UpdateStatus PATCH /aset/:id/status
+func samePtrUint(a, b *uint) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func samePtrFloat(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func ptrUintLabel(v *uint) string {
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("#%d", *v)
+}
+
+func ptrFloatLabel(v *float64) string {
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%.6f", *v)
+}
+
+// UpdateStatus
 func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -169,14 +277,18 @@ func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	if !utils.ParseAndValidate(c, &req) {
 		return nil
 	}
+	statusLama := a.Status
 	a.Status = req.Status
 	if err := h.repo.Update(a); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui status aset", nil)
 	}
+	if statusLama != a.Status {
+		h.logHistory(c, a.ID, "status", statusLama, a.Status, "")
+	}
 	return utils.OK(c, "status aset berhasil diperbarui", a)
 }
 
-// Delete DELETE /aset/:id
+// Delete
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -200,10 +312,19 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
+
+	g.Get("/map", view, h.MapPoints)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, onlyStaff, h.Create)
 	g.Put("/:id", edit, onlyStaff, h.Update)
 	g.Patch("/:id/status", edit, h.UpdateStatus)
+
+	g.Post("/ping", edit, h.PingAll)
+	g.Post("/:id/ping", edit, h.Ping)
+	g.Get("/:id/port", view, h.ListPorts)
+	g.Put("/:id/port/:nomor", edit, h.SetPort)
+	g.Delete("/:id/port/:nomor", edit, h.ClearPort)
+	g.Get("/:id/riwayat", view, h.ListHistory)
 	g.Delete("/:id", onlyStaff, edit, h.Delete)
 }

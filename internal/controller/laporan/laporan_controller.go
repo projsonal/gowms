@@ -13,6 +13,7 @@ import (
 	barangRepoPkg "github.com/projsonal/gowms/internal/repositories/barang"
 	barangKeluarRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	barangMasukRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_masuk"
+	barangRusakRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_rusak"
 	purchaseOrderRepoPkg "github.com/projsonal/gowms/internal/repositories/po"
 	stockOpnameRepoPkg "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	"github.com/projsonal/gowms/pkg/constant"
@@ -71,6 +72,13 @@ func formatRupiah(v int64) string {
 		res = "-" + res
 	}
 	return res
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func uintOrDash(v *uint) string {
@@ -202,6 +210,7 @@ var reportTitles = map[string]string{
 	constant.LaporanBarangKeluar: "Laporan Barang Keluar",
 	constant.LaporanPO:           "Laporan Purchase Order",
 	constant.LaporanStokOpname:   "Laporan Stock Opname",
+	constant.LaporanBarangRetur:  "Laporan Barang Retur",
 }
 
 func (h *Controller) buildReport(tipe string, dari, sampai *time.Time) (title string, headers []string, rows [][]string, err error) {
@@ -221,8 +230,43 @@ func (h *Controller) buildReport(tipe string, dari, sampai *time.Time) (title st
 		headers, rows, err = h.buildPurchaseOrder(dari, sampai)
 	case constant.LaporanStokOpname:
 		headers, rows, err = h.buildStockOpname(dari, sampai)
+	case constant.LaporanBarangRetur:
+		headers, rows, err = h.buildBarangRetur(dari, sampai)
 	}
 	return title, headers, rows, err
+}
+
+// buildBarangRetur — daftar barang rusak yang HASIL PENGECEKANNYA "retur"
+// (bisa diperbaiki/dikembalikan ke supplier, lihat dokumentasi alur di
+// model.BarangRusak) dalam rentang tanggal pengecekan (DicekPada). Barang
+// dengan hasil "rusak" (tidak bisa diperbaiki) atau yang masih menunggu
+// pengecekan TIDAK ikut di laporan ini — beda modul dari Laporan Barang
+// Keluar/Masuk, sumbernya BarangRusak bukan BarangKeluar/BarangMasuk.
+func (h *Controller) buildBarangRetur(dari, sampai *time.Time) (headers []string, rows [][]string, err error) {
+	list, _, err := h.barangRusakRepo.List(bigPagination(), barangRusakRepoPkg.Filter{Status: constant.StatusRetur})
+	if err != nil {
+		return nil, nil, err
+	}
+	headers = []string{"Label/Kode Barang", "Nama Barang", "Keterangan", "Dilaporkan Oleh", "Diperiksa Oleh", "Tanggal Diperiksa"}
+	for _, b := range list {
+		if b.DicekPada != nil && !inRange(*b.DicekPada, dari, sampai) {
+			continue
+		}
+		pelapor, pemeriksa, tanggal := "-", "-", "-"
+		if b.Pelapor != nil {
+			pelapor = b.Pelapor.FullName
+		}
+		if b.Pemeriksa != nil {
+			pemeriksa = b.Pemeriksa.FullName
+		}
+		if b.DicekPada != nil {
+			tanggal = b.DicekPada.Format(dateFormat)
+		}
+		rows = append(rows, []string{
+			b.LabelBarang, b.NamaBarang, orDash(b.Keterangan), pelapor, pemeriksa, tanggal,
+		})
+	}
+	return headers, rows, nil
 }
 
 // computeGenericSummary membangun ringkasan generik (total baris + agregat
@@ -299,9 +343,11 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 
 	timestamp := time.Now().Format("20060102-150405")
 	summary := computeGenericSummary(headers, rows)
+	granularity := normalizeGranularity(c.Query("granularitas", ""))
+	chart := h.buildChart(tipe, headers, rows, granularity)
 	switch format {
 	case constant.FormatExcel:
-		data, err := reportexport.ToExcel(title, summary, headers, rows)
+		data, err := reportexport.ToExcel(title, summary, headers, rows, toExportChart(chart))
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file excel", nil)
 		}
@@ -309,7 +355,7 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-%s.xlsx"`, tipe, timestamp))
 		return c.Send(data)
 	case constant.FormatPDF:
-		data, err := reportexport.ToPDF(title, summary, headers, rows)
+		data, err := reportexport.ToPDF(title, summary, headers, rows, toExportChart(chart))
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file pdf", nil)
 		}
@@ -317,7 +363,16 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-%s.pdf"`, tipe, timestamp))
 		return c.Send(data)
 	case constant.FormatWord:
-		data, err := reportexport.ToDocx(title, summary, headers, rows)
+		// Docx dirakit manual dari OOXML mentah (lihat pkg/reportexport/docs.go)
+		// TANPA library chart — chart sungguhan tidak bisa disisipkan di sini,
+		// jadi FALLBACK ke insight teks otomatis (lihat ChartData.Insight()),
+		// sesuai instruksi eksplisit: kalau gambar chart tidak bisa
+		// disesuaikan ke suatu format, cukup insight tekstualnya saja.
+		insight := ""
+		if chart != nil {
+			insight = "Analisa Data — " + chart.Title + ": " + chart.Insight()
+		}
+		data, err := reportexport.ToDocx(title, summary, headers, rows, insight)
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file docx", nil)
 		}
@@ -326,6 +381,15 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 		return c.Send(data)
 	}
 	return utils.Fail(c, fiber.StatusBadRequest, constant.ErrLaporanFormatTidakDidukung, nil)
+}
+
+// toExportChart — jembatan ChartData (paket laporan) -> reportexport.ChartData
+// (paket reportexport) supaya kedua paket tidak saling import satu sama lain.
+func toExportChart(cd *ChartData) *reportexport.ChartData {
+	if cd == nil {
+		return nil
+	}
+	return &reportexport.ChartData{Title: cd.Title, Type: cd.Type, Labels: cd.Labels, Values: cd.Values}
 }
 
 func (h *Controller) Types(c *fiber.Ctx) error {
@@ -360,11 +424,15 @@ func (h *Controller) Preview(c *fiber.Ctx) error {
 	for _, kv := range summaryPairs {
 		summary = append(summary, fiber.Map{"label": kv[0], "value": kv[1]})
 	}
+	granularity := normalizeGranularity(c.Query("granularitas", ""))
+	chart := h.buildChart(tipe, headers, rows, granularity)
 	return utils.OK(c, "pratinjau laporan berhasil diambil", fiber.Map{
-		"title":   title,
-		"headers": headers,
-		"rows":    rows,
-		"summary": summary,
+		"title":        title,
+		"headers":      headers,
+		"rows":         rows,
+		"summary":      summary,
+		"chart":        chart,
+		"granularitas": granularity,
 	})
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	notification "github.com/projsonal/gowms/internal/controller/notification"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
@@ -74,9 +75,17 @@ func (h *Controller) Set(c *fiber.Ctx) error {
 	}
 	logMaintenanceEvent(userID, req.IsActive, req.Message)
 	msg := "mode maintenance berhasil dinonaktifkan"
+	title := "Mode Pemeliharaan Dinonaktifkan"
+	body := "Sistem kembali normal, semua fitur bisa diakses seperti biasa."
 	if req.IsActive {
 		msg = "mode maintenance berhasil diaktifkan"
+		title = "Mode Pemeliharaan Diaktifkan"
+		body = "Sebagian fitur untuk sementara tidak bisa diakses."
+		if req.Message != "" {
+			body = req.Message
+		}
 	}
+	notification.Notify(h.notifRepo, "maintenance", title, body, "", nil, "all")
 	return utils.OK(c, msg, toStatusResponse(status.IsActive, status.Message, status.StartedAt, status.EstimatedUntil))
 }
 

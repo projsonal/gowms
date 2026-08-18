@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!--
+  Demo Peta Sebaran Aset — gowms
+
+  Halaman statis ini adalah CONTOH penggunaan endpoint backend
+  GET /stockrsd/aset/map untuk menampilkan seluruh titik aset
+  (tiang, ODC, OLT, ONT, ODP, modem) di Google Maps, dikelompokkan
+  per jenis aset dan per tipe gudang (pusat/cabang).
+
+  CARA PAKAI:
+    1. Ganti YOUR_GOOGLE_MAPS_API_KEY di bawah dengan API key kalian
+       sendiri (Google Cloud Console -> Maps JavaScript API).
+       JANGAN commit API key asli ke git — untuk demo lokal saja.
+    2. Ganti API_BASE_URL kalau backend tidak jalan di localhost:8080.
+    3. Login dulu lewat endpoint /auth/login untuk dapat access token,
+       lalu isi token itu di kolom "Access Token" pada halaman ini
+       (endpoint /aset/map dilindungi JWTAuth + RBAC "view").
+    4. Buka file ini langsung di browser (file://) atau serve statis.
+
+  Ini BUKAN bagian dari build Go (tidak di-embed ke binary), murni
+  referensi front-end untuk tim yang membangun UI produksi.
+-->
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<title>Peta Sebaran Aset — gowms</title>
+<style>
+  :root {
+    --color-pusat: #d9480f;
+    --color-cabang: #1971c2;
+  }
+  html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+  #toolbar {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    padding: 10px 14px; background: #1a1b1e; color: #f1f3f5; font-size: 13px;
+  }
+  #toolbar label { display: flex; flex-direction: column; gap: 2px; }
+  #toolbar input, #toolbar select {
+    padding: 5px 8px; border-radius: 4px; border: 1px solid #495057; font-size: 13px;
+  }
+  #toolbar button {
+    padding: 6px 14px; border-radius: 4px; border: none; background: #2f9e44;
+    color: white; font-weight: 600; cursor: pointer; align-self: flex-end;
+  }
+  #status { align-self: flex-end; font-size: 12px; color: #adb5bd; }
+  #map { width: 100%; height: calc(100% - 58px); }
+  .legend {
+    background: white; padding: 8px 12px; margin: 10px; border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3); font-size: 12px; line-height: 1.6;
+  }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <label>Access Token (Bearer)
+    <input id="token" type="text" placeholder="tempel access_token hasil login" style="width:320px" />
+  </label>
+  <label>Jenis Aset
+    <select id="jenisAset">
+      <option value="">Semua</option>
+      <option value="tiang">Tiang</option>
+      <option value="odc">ODC</option>
+      <option value="olt">OLT</option>
+      <option value="ont">ONT</option>
+      <option value="odp">ODP</option>
+      <option value="modem">Modem</option>
+    </select>
+  </label>
+  <label>Tipe Gudang
+    <select id="tipeGudang">
+      <option value="">Semua</option>
+      <option value="pusat">Pusat</option>
+      <option value="cabang">Cabang</option>
+    </select>
+  </label>
+  <button onclick="loadMarkers()">Muat Peta</button>
+  <span id="status"></span>
+</div>
+
+<div id="map"></div>
+
+<script>
+  const API_BASE_URL = "http://localhost:8080/stockrsd";
+
+  // Warna & ikon per jenis aset — sesuaikan dengan brand guideline kalian.
+  const ICON_BY_JENIS = {
+    tiang: { color: "#495057", symbol: "|" },
+    odc:   { color: "#e8590c", symbol: "O" },
+    olt:   { color: "#5f3dc4", symbol: "L" },
+    ont:   { color: "#0c8599", symbol: "N" },
+    odp:   { color: "#2f9e44", symbol: "P" },
+    modem: { color: "#e64980", symbol: "M" },
+  };
+
+  let map;
+  let markers = [];
+  let infoWindow;
+
+  function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+      center: { lat: -2.5, lng: 118 }, // tengah Indonesia — ganti ke area operasional kalian
+      zoom: 5,
+    });
+    infoWindow = new google.maps.InfoWindow();
+
+    const legend = document.createElement("div");
+    legend.className = "legend";
+    legend.innerHTML = `
+      <div><span class="dot" style="background:var(--color-pusat)"></span>Kantor Pusat</div>
+      <div><span class="dot" style="background:var(--color-cabang)"></span>Cabang</div>
+    `;
+    map.controls[google.maps.ControlPosition.LEFT_BOTTOM].push(legend);
+
+    loadMarkers();
+  }
+
+  function clearMarkers() {
+    markers.forEach((m) => m.setMap(null));
+    markers = [];
+  }
+
+  function markerIcon(point) {
+    const jenis = ICON_BY_JENIS[point.jenis_aset] || { color: "#868e96", symbol: "?" };
+    const ringColor = point.gudang_tipe === "pusat" ? "#d9480f" : "#1971c2";
+    // SVG marker sederhana: lingkaran warna jenis aset + cincin warna tipe gudang.
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34">
+        <circle cx="17" cy="17" r="15" fill="${jenis.color}" stroke="${ringColor}" stroke-width="3"/>
+        <text x="17" y="22" font-size="14" text-anchor="middle" fill="white" font-family="sans-serif" font-weight="bold">${jenis.symbol}</text>
+      </svg>`;
+    return {
+      url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg),
+      scaledSize: new google.maps.Size(34, 34),
+      anchor: new google.maps.Point(17, 17),
+    };
+  }
+
+  async function loadMarkers() {
+    const token = document.getElementById("token").value.trim();
+    const jenisAset = document.getElementById("jenisAset").value;
+    const tipeGudang = document.getElementById("tipeGudang").value;
+    const statusEl = document.getElementById("status");
+
+    if (!token) {
+      statusEl.textContent = "Isi Access Token dulu (login lewat POST /auth/login).";
+      return;
+    }
+
+    const params = new URLSearchParams();
+    if (jenisAset) params.set("jenis_aset", jenisAset);
+    if (tipeGudang) params.set("tipe_gudang", tipeGudang);
+
+    statusEl.textContent = "Memuat...";
+    try {
+      const res = await fetch(`${API_BASE_URL}/aset/map?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        statusEl.textContent = `Gagal: ${body.message || res.status}`;
+        return;
+      }
+
+      clearMarkers();
+      const points = body.data || [];
+      const bounds = new google.maps.LatLngBounds();
+
+      points.forEach((point) => {
+        const position = { lat: point.latitude, lng: point.longitude };
+        const marker = new google.maps.Marker({
+          position,
+          map,
+          icon: markerIcon(point),
+          title: point.label_rsd || point.nama,
+        });
+        marker.addListener("click", () => {
+          infoWindow.setContent(`
+            <div style="font-size:13px">
+              <strong>${point.label_rsd || point.nama}</strong><br/>
+              Jenis: ${point.jenis_aset.toUpperCase()}<br/>
+              Status: ${point.status}<br/>
+              Gudang: ${point.gudang_nama} (${point.gudang_kode}, ${point.gudang_tipe})
+            </div>
+          `);
+          infoWindow.open(map, marker);
+        });
+        markers.push(marker);
+        bounds.extend(position);
+      });
+
+      if (points.length > 0) map.fitBounds(bounds);
+      statusEl.textContent = `${points.length} titik aset dimuat.`;
+    } catch (err) {
+      statusEl.textContent = `Error: ${err.message}`;
+    }
+  }
+</script>
+
+<script
+  src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap"
+  async defer
+></script>
+
+</body>
+</html>

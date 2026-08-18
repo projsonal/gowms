@@ -18,14 +18,14 @@ import (
 // Hasilnya memang lebih sederhana dari docx buatan Word asli (tanpa style
 // kompleks), tapi valid dibuka Word/LibreOffice/Google Docs, dan cukup
 // untuk kebutuhan laporan tabel seperti Excel/PDF di file lain paket ini.
-func ToDocx(title string, summary [][2]string, headers []string, rows [][]string) ([]byte, error) {
+func ToDocx(title string, summary [][2]string, headers []string, rows [][]string, chartInsight string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 
 	files := map[string]string{
 		"[Content_Types].xml": contentTypesXML,
 		"_rels/.rels":         rootRelsXML,
-		"word/document.xml":   buildDocumentXML(title, summary, headers, rows),
+		"word/document.xml":   buildDocumentXML(title, summary, headers, rows, chartInsight),
 	}
 
 	// Urutan penulisan disamakan dengan urutan map di atas supaya
@@ -65,7 +65,7 @@ func escXML(s string) string {
 	return html.EscapeString(s)
 }
 
-func buildDocumentXML(title string, summary [][2]string, headers []string, rows [][]string) string {
+func buildDocumentXML(title string, summary [][2]string, headers []string, rows [][]string, chartInsight string) string {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n")
 	b.WriteString(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`)
@@ -92,6 +92,19 @@ func buildDocumentXML(title string, summary [][2]string, headers []string, rows 
 			b.WriteString(escXML(kv[1]))
 			b.WriteString(`</w:t></w:r></w:p>`)
 		}
+		b.WriteString(`<w:p/>`)
+	}
+
+	// Analisa Data — chart SUNGGUHAN tidak bisa disisipkan di format docx
+	// ini (dirakit manual dari OOXML mentah, tanpa library yang bisa
+	// men-generate/embed grafik) — sesuai instruksi eksplisit, dipakai
+	// FALLBACK insight teks otomatis (angka yang sama dengan yang
+	// divisualisasikan chart di web/PDF/Excel, cuma bentuknya kalimat).
+	if chartInsight != "" {
+		b.WriteString(`<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Analisa Data</w:t></w:r></w:p>`)
+		b.WriteString(`<w:p><w:r><w:t xml:space="preserve">`)
+		b.WriteString(escXML(chartInsight))
+		b.WriteString(`</w:t></w:r></w:p>`)
 		b.WriteString(`<w:p/>`)
 	}
 

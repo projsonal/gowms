@@ -71,6 +71,10 @@ func (r *repository) Update(b *model.Barang) error {
 	return r.db.Save(b).Error
 }
 
+// Delete — soft-delete OTOMATIS (lihat catatan lengkap di
+// repositories/asset Delete()) — model.Barang punya DeletedAt, jadi ini
+// UPDATE deleted_at, bukan DELETE SQL sungguhan. Pulihkan/hapus permanen
+// lewat fitur Tempat Sampah.
 func (r *repository) Delete(id uint) error {
 	return r.db.Delete(&model.Barang{}, id).Error
 }

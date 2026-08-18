@@ -6,7 +6,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-
 const CurrentVersion = "v1.3.0"
 
 type VersionChanges struct {
@@ -71,14 +70,18 @@ type Controller struct{}
 func New() *Controller { return &Controller{} }
 
 type VersionResponse struct {
-	Version string `json:"version"`
-	AppName string `json:"app_name"`
+	Version     string `json:"version"`
+	AppName     string `json:"app_name"`
+	Description string `json:"description"`
+	Developer   string `json:"developer"`
 }
 
 func (h *Controller) Version(c *fiber.Ctx) error {
 	return utils.OK(c, "versi aplikasi berhasil diambil", VersionResponse{
-		Version: CurrentVersion,
-		AppName: "WMS - RSD",
+		Version:     CurrentVersion,
+		AppName:     "WMS - RSD",
+		Description: "WMS-RSD merupakan pelayanan gudang serta inventaris produk dalam perusahaan — mengelola stok, pengiriman, aset gudang (tiang/ODC/ONT/ODP/OLT/transportasi), hingga laporan operasional dalam satu sistem.",
+		Developer:   "Tim Internal RSD",
 	})
 }
 

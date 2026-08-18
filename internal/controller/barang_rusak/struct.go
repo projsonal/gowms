@@ -1,6 +1,8 @@
 package barang_rusak
 
 import (
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	barangRusakRepo "github.com/projsonal/gowms/internal/repositories/barang_rusak"
 	"github.com/projsonal/gowms/internal/repositories/role"
@@ -11,14 +13,16 @@ import (
 const Module = constant.ModuleBarangRusak
 
 type Controller struct {
-	repo       barangRusakRepo.Repository
-	barangRepo barangRepo.Repository
-	roleRepo   role.Repository
-	jwtSvc     *utils.JWTService
+	repo        barangRusakRepo.Repository
+	barangRepo  barangRepo.Repository
+	roleRepo    role.Repository
+	jwtSvc      *utils.JWTService
+	storagePath string
+	notifRepo   notificationRepo.Repository
 }
 
-func New(repo barangRusakRepo.Repository, barangRepo barangRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService) *Controller {
-	return &Controller{repo: repo, barangRepo: barangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc}
+func New(repo barangRusakRepo.Repository, barangRepo barangRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService, storagePath string, notifRepo notificationRepo.Repository) *Controller {
+	return &Controller{repo: repo, barangRepo: barangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, storagePath: storagePath, notifRepo: notifRepo}
 }
 
 type BarangRusakRequest struct {

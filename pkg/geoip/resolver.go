@@ -11,320 +11,111 @@ import (
 )
 
 const (
-	unknownLocation = "-"
-
-	defaultTimeout = 2 * time.Second
-
+	unknownLocation       = "-"
+	defaultTimeout        = 2 * time.Second
 	maxResponseSize int64 = 1 << 20 // 1 MB
-
-	geoPath = "/json/"
-
-	geoFields = "status,city,country,timezone"
-
-	statusSuccess = "success"
+	geoPath               = "/json/"
+	geoFields             = "status,city,country,timezone"
+	statusSuccess         = "success"
 )
-
 
 type Resolver interface {
 	Lookup(ctx context.Context, ip string) (string, error)
 }
 
-
-
 type NoopResolver struct{}
 
-
-func (NoopResolver) Lookup(
-	context.Context,
-	string,
-) (string, error) {
-
+func (NoopResolver) Lookup(context.Context, string) (string, error) {
 	return unknownLocation, nil
 }
 
-
-
 type httpResolver struct {
-
-	client *http.Client
-
+	client  *http.Client
 	baseURL *url.URL
 }
 
-
-
-func NewHTTPResolver(
-	baseURL string,
-) (Resolver,error) {
-
-
-	parsedURL,err :=
-		url.Parse(baseURL)
-
-
+func NewHTTPResolver(baseURL string) (Resolver, error) {
+	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
-
-		return nil,
-			fmt.Errorf(
-				"parse geoip base url: %w",
-				err,
-			)
+		return nil, fmt.Errorf("parse geoip base url: %w", err)
 	}
-
-
 	return &httpResolver{
-
-		client:&http.Client{
-			Timeout: defaultTimeout,
-		},
-
-		baseURL:parsedURL,
-
-	},nil
+		client:  &http.Client{Timeout: defaultTimeout},
+		baseURL: parsedURL,
+	}, nil
 }
 
-
-
-
 type ipAPIResponse struct {
-
-	Status string `json:"status"`
-
-	City string `json:"city"`
-
-	Country string `json:"country"`
-
+	Status   string `json:"status"`
+	City     string `json:"city"`
+	Country  string `json:"country"`
 	Timezone string `json:"timezone"`
 }
 
-
-
-
-
-func (r *httpResolver) Lookup(
-	ctx context.Context,
-	ip string,
-) (string,error) {
-
-
+func (r *httpResolver) Lookup(ctx context.Context, ip string) (string, error) {
 	if !isPublicIP(ip) {
-
-		return unknownLocation,nil
+		return unknownLocation, nil
 	}
 
-
-
-	requestURL :=
-		r.buildURL(ip)
-
-
-
-	req,err :=
-		http.NewRequestWithContext(
-			ctx,
-			http.MethodGet,
-			requestURL,
-			nil,
-		)
-
-
-
+	requestURL := r.buildURL(ip)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
-
-		return unknownLocation,
-			fmt.Errorf(
-				"create geoip request: %w",
-				err,
-			)
+		return unknownLocation, fmt.Errorf("create geoip request: %w", err)
 	}
 
-
-
-	resp,err :=
-		r.client.Do(req)
-
-
+	resp, err := r.client.Do(req)
 	if err != nil {
-
-		return unknownLocation,
-			fmt.Errorf(
-				"execute geoip request: %w",
-				err,
-			)
+		return unknownLocation, fmt.Errorf("execute geoip request: %w", err)
 	}
-
-
-
 	defer resp.Body.Close()
 
-
-
 	if resp.StatusCode != http.StatusOK {
-
-		return unknownLocation,
-			fmt.Errorf(
-				"geoip api returned status %d",
-				resp.StatusCode,
-			)
+		return unknownLocation, fmt.Errorf("geoip api returned status %d", resp.StatusCode)
 	}
 
-
-
-	result,err :=
-		decodeResponse(resp)
-
-
+	result, err := decodeResponse(resp)
 	if err != nil {
-
-		return unknownLocation,err
+		return unknownLocation, err
 	}
-
-
-
 	if !result.isValid() {
-
-		return unknownLocation,nil
+		return unknownLocation, nil
 	}
 
-
-
-	return formatLocation(
-		result.City,
-		result.Country,
-		result.Timezone,
-	),nil
+	return formatLocation(result.City, result.Country, result.Timezone), nil
 }
 
+func (r *httpResolver) buildURL(ip string) string {
+	u := *r.baseURL
+	u.Path = geoPath + ip
 
-
-
-
-
-func (r *httpResolver) buildURL(
-	ip string,
-) string {
-
-
-	u :=
-		*r.baseURL
-
-
-	u.Path =
-		geoPath + ip
-
-
-
-	query :=
-		u.Query()
-
-
-	query.Set(
-		"fields",
-		geoFields,
-	)
-
-
-	u.RawQuery =
-		query.Encode()
-
+	query := u.Query()
+	query.Set("fields", geoFields)
+	u.RawQuery = query.Encode()
 
 	return u.String()
 }
 
-
-
-
-
-
-func decodeResponse(
-	resp *http.Response,
-) (*ipAPIResponse,error) {
-
-
-	reader :=
-		io.LimitReader(
-			resp.Body,
-			maxResponseSize,
-		)
-
-
+func decodeResponse(resp *http.Response) (*ipAPIResponse, error) {
+	reader := io.LimitReader(resp.Body, maxResponseSize)
 
 	var result ipAPIResponse
-
-
-	if err :=
-		json.NewDecoder(reader).
-			Decode(&result);
-	err != nil {
-
-
-		return nil,
-			fmt.Errorf(
-				"decode geoip response: %w",
-				err,
-			)
+	if err := json.NewDecoder(reader).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode geoip response: %w", err)
 	}
-
-
-
-	return &result,nil
+	return &result, nil
 }
-
-
-
-
-
 
 func (r ipAPIResponse) isValid() bool {
-
-
-	return r.Status == statusSuccess &&
-		r.City != ""
+	return r.Status == statusSuccess && r.City != ""
 }
 
-
-
-
-
-
-
-func formatLocation(
-	city string,
-	country string,
-	timezone string,
-) string {
-
-
-	location :=
-		city
-
-
-
+func formatLocation(city, country, timezone string) string {
+	location := city
 	if country != "" {
-
-		location =
-			fmt.Sprintf(
-				"%s, %s",
-				city,
-				country,
-			)
+		location = fmt.Sprintf("%s, %s", city, country)
 	}
-
-
-
-	if tz :=
-		describeTimezone(timezone);
-	tz != "" {
-
-
-		return fmt.Sprintf(
-			"%s (%s)",
-			location,
-			tz,
-		)
+	if tz := describeTimezone(timezone); tz != "" {
+		return fmt.Sprintf("%s (%s)", location, tz)
 	}
-
-
-
 	return location
 }

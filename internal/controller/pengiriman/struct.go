@@ -5,6 +5,7 @@ import (
 
 	barangKeluarRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
 	pgRepo "github.com/projsonal/gowms/internal/repositories/pengiriman"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	"github.com/projsonal/gowms/pkg/utils"
@@ -16,24 +17,26 @@ type Controller struct {
 	barangKeluarRepo barangKeluarRepo.Repository
 	roleRepo         role.Repository
 	jwtSvc           *utils.JWTService
+	notifRepo        notificationRepo.Repository
 }
 
 func New(repo pgRepo.Repository, gudangRepo gudangRepo.Repository, barangKeluarRepo barangKeluarRepo.Repository,
-	roleRepo role.Repository, jwtSvc *utils.JWTService) *Controller {
+	roleRepo role.Repository, jwtSvc *utils.JWTService, notifRepo notificationRepo.Repository) *Controller {
 	return &Controller{
 		repo: repo, gudangRepo: gudangRepo, barangKeluarRepo: barangKeluarRepo, roleRepo: roleRepo, jwtSvc: jwtSvc,
+		notifRepo: notifRepo,
 	}
 }
 
 // ---- DTO ----
 
 type PengirimanRequest struct {
-	BarangKeluarID   *uint  `json:"barang_keluar_id"`
-	GudangAsalID     uint   `json:"gudang_asal_id" validate:"required"`
-	JenisPengambilan string `json:"jenis_pengambilan" validate:"required,oneof=pickup dropoff"`
-	NamaPenerima     string `json:"nama_penerima" validate:"required,max=150"`
-	TeleponPenerima  string `json:"telepon_penerima" validate:"max=20"`
-	AlamatTujuan     string `json:"alamat_tujuan" validate:"max=255"`
+	BarangKeluarID   *uint    `json:"barang_keluar_id"`
+	GudangAsalID     uint     `json:"gudang_asal_id" validate:"required"`
+	JenisPengambilan string   `json:"jenis_pengambilan" validate:"required,oneof=pickup dropoff"`
+	NamaPenerima     string   `json:"nama_penerima" validate:"required,max=150"`
+	TeleponPenerima  string   `json:"telepon_penerima" validate:"max=20"`
+	AlamatTujuan     string   `json:"alamat_tujuan" validate:"max=255"`
 	DestLat          *float64 `json:"dest_lat" validate:"omitempty,min=-90,max=90"`
 	DestLng          *float64 `json:"dest_lng" validate:"omitempty,min=-180,max=180"`
 	// TanggalKirim: string "YYYY-MM-DD" — lihat catatan lengkap di

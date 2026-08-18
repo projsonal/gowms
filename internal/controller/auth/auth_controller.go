@@ -182,8 +182,8 @@ func (h *Controller) ResetPassword(c *fiber.Ctx) error {
 		return nil
 	}
 
-	if err := h.captchaSvc.Verify(req.CaptchaToken, req.CaptchaAnswer); err != nil {
-		return utils.Fail(c, fiber.StatusBadRequest, "verifikasi captcha gagal: "+err.Error(), nil)
+	if err := h.humanCheckSvc.Verify(req.HumanCheckToken); err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "verifikasi gagal: "+err.Error(), nil)
 	}
 
 	u, err := h.userRepo.FindByUsername(req.Identifier)
@@ -506,6 +506,7 @@ func (h *Controller) Me(c *fiber.Ctx) error {
 		RoleID:       u.RoleID,
 		RoleName:     r.Name,
 		Is2FAEnabled: u.Is2FAEnabled,
+		AvatarURL:    u.AvatarURL(),
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	bkRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -16,11 +17,12 @@ type Controller struct {
 	gudangRepo gudangRepo.Repository
 	roleRepo   role.Repository
 	jwtSvc     *utils.JWTService
+	notifRepo  notificationRepo.Repository
 }
 
 func New(repo bkRepo.Repository, barangRepo barangRepo.Repository, gudangRepo gudangRepo.Repository,
-	roleRepo role.Repository, jwtSvc *utils.JWTService) *Controller {
-	return &Controller{repo: repo, barangRepo: barangRepo, gudangRepo: gudangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc}
+	roleRepo role.Repository, jwtSvc *utils.JWTService, notifRepo notificationRepo.Repository) *Controller {
+	return &Controller{repo: repo, barangRepo: barangRepo, gudangRepo: gudangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, notifRepo: notifRepo}
 }
 
 type ItemRequest struct {

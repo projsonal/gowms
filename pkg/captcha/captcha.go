@@ -87,15 +87,13 @@ func (s *Service) Verify(token, userAnswer string) error {
 	if err != nil {
 		return err
 	}
-
 	if s.used.isUsed(token) {
 		return ErrAlreadyUsed
 	}
-	s.used.markUsed(token, s.ttl)
-
 	if time.Now().After(expiresAt) {
 		return ErrExpired
 	}
+	s.used.markUsed(token, s.ttl)
 
 	given, err := strconv.Atoi(strings.TrimSpace(userAnswer))
 	if err != nil || given != answer {
@@ -168,11 +166,11 @@ func renderCaptchaImage(text string) image.Image {
 		}
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 2; i++ {
 		drawNoiseLine(img, width, height)
 	}
 
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 25; i++ {
 		x, y := mrand.Intn(width), mrand.Intn(height)
 		img.Set(x, y, randomGray())
 	}
@@ -183,7 +181,7 @@ func renderCaptchaImage(text string) image.Image {
 		if !ok {
 			glyph = font5x7[' ']
 		}
-		yOffset := mrand.Intn(5) - 2 // distorsi vertikal ringan per karakter
+		yOffset := mrand.Intn(3) - 1
 		drawGlyph(img, glyph, x, padding+yOffset, scale, randomDarkColor())
 		x += charW*scale + gap
 	}

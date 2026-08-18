@@ -6,6 +6,7 @@ import (
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	bmRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
 	poRepo "github.com/projsonal/gowms/internal/repositories/po"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
@@ -20,13 +21,16 @@ type Controller struct {
 	supplierRepo supplierRepo.Repository
 	roleRepo     role.Repository
 	jwtSvc       *utils.JWTService
+	notifRepo    notificationRepo.Repository
 }
 
 func New(repo bmRepo.Repository, barangRepo barangRepo.Repository, gudangRepo gudangRepo.Repository,
-	poRepo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService) *Controller {
+	poRepo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService,
+	notifRepo notificationRepo.Repository) *Controller {
 	return &Controller{
 		repo: repo, barangRepo: barangRepo, gudangRepo: gudangRepo,
 		poRepo: poRepo, supplierRepo: supplierRepo, roleRepo: roleRepo, jwtSvc: jwtSvc,
+		notifRepo: notifRepo,
 	}
 }
 
@@ -38,9 +42,9 @@ type ItemRequest struct {
 }
 
 type BMRequest struct {
-	PurchaseOrderID *uint         `json:"purchase_order_id"`
-	SupplierID      *uint         `json:"supplier_id"`
-	GudangID        uint          `json:"gudang_id" validate:"required"`
+	PurchaseOrderID *uint `json:"purchase_order_id"`
+	SupplierID      *uint `json:"supplier_id"`
+	GudangID        uint  `json:"gudang_id" validate:"required"`
 	// Tanggal: SENGAJA string "YYYY-MM-DD" (bukan time.Time langsung) —
 	// form HTML <input type="date"> di frontend cuma kirim tanggal polos
 	// tanpa jam/zona waktu (mis. "2026-08-10"), sedangkan JSON unmarshal
@@ -51,8 +55,8 @@ type BMRequest struct {
 	// sekali, murni ketidakcocokan format tanggal. Diparse manual di
 	// Create()/Update() pakai parseTanggalHarian().
 	Tanggal string        `json:"tanggal" validate:"required"`
-	Catatan         string        `json:"catatan" validate:"max=255"`
-	Items           []ItemRequest `json:"items" validate:"required,min=1,dive"`
+	Catatan string        `json:"catatan" validate:"max=255"`
+	Items   []ItemRequest `json:"items" validate:"required,min=1,dive"`
 }
 
 // parseTanggalHarian mem-parse tanggal "YYYY-MM-DD" (format bawaan

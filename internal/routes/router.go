@@ -3,9 +3,10 @@ package routes
 import (
 	"log"
 
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	fiberSwagger "github.com/gofiber/swagger"
-	"time"
 
 	"github.com/projsonal/gowms/internal/controller"
 	"github.com/projsonal/gowms/internal/middleware"
@@ -48,9 +49,14 @@ func SetupRouter(deps *Dependencies) *fiber.App {
 	app.Get("/health/ready", deps.HealthController.Ready)
 	app.Get("/health", deps.HealthController.Health)
 
-	// File yang diupload user (foto profil, dst) disimpan di disk lokal
-	// (lihat StorageConfig.Path) dan disajikan statis dari sini — mis.
-	// hasil upload avatar bisa diakses langsung di /uploads/avatars/xxx.jpg.
+	// File lain yang masih diupload ke disk lokal (mis. foto bukti
+	// barang_rusak) disajikan statis dari sini. Foto profil user SUDAH
+	// TIDAK lewat sini lagi — sekarang disimpan sebagai bytea di database
+	// & diserve lewat GET /users/:id/avatar yang wajib login (lihat
+	// internal/controller/users/user_controller.go ServeAvatar), karena
+	// route statis ini tidak punya proteksi/otentikasi sama sekali. Kalau
+	// foto barang_rusak juga dianggap sensitif, pola yang sama (simpan di
+	// DB + endpoint ber-auth) bisa dipakai di controller barang_rusak.
 	app.Static("/uploads", deps.Cfg.Storage.Path)
 
 	if deps.Cfg.Swagger.Enabled {
@@ -64,8 +70,11 @@ func SetupRouter(deps *Dependencies) *fiber.App {
 	api := app.Group("/stockrsd")
 
 	deps.CaptchaController.RegisterRoutes(api)
+	deps.HumanCheckController.RegisterRoutes(api)
 	deps.SecurityController.RegisterRoutes(api)
 	deps.AppInfoController.RegisterRoutes(api)
+	deps.TrashController.RegisterRoutes(api)
+	deps.NotificationController.RegisterRoutes(api)
 
 	deps.MaintenanceController.RegisterRoutes(api)
 
@@ -100,6 +109,7 @@ func SetupRouter(deps *Dependencies) *fiber.App {
 		deps.CodController,
 		deps.AssetController,
 		deps.BarangRusakController,
+		deps.TaskController,
 		deps.LaporanController,
 		deps.DashboardController,
 	}

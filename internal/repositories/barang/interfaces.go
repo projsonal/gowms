@@ -6,12 +6,20 @@ import (
 )
 
 type Filter struct {
-	KategoriID       uint
-	SatuanID         uint
-	StokMenipis      bool
-	OnlyActive       bool
+	KategoriID  uint
+	SatuanID    uint
+	StokMenipis bool // true = hanya tampilkan barang dengan stok <= stok_minimum (dan stok_minimum > 0)
+	OnlyActive  bool // true = sembunyikan barang yang IsActive=false (didiskontinu)
+
+	// --- Alur persetujuan (lihat model.Barang.ApprovalStatus) ---
+	// ApprovalStatuses: kalau diisi, hanya tampilkan baris dengan salah
+	// satu status ini (dipakai controller List() untuk membangun visibilitas
+	// per role — super_admin/karyawan/admin — lihat barang_controller.go).
 	ApprovalStatuses []string
-	OrSubmittedBy    uint
+	// ApprovalStatuses kosong TAPI OrSubmittedBy diisi berarti: tampilkan
+	// baris apa pun (termasuk yang menunggu) SELAMA yang mengajukan adalah
+	// user ini — dipakai supaya admin tetap melihat pengajuannya sendiri.
+	OrSubmittedBy uint
 }
 
 type Repository interface {

@@ -128,15 +128,15 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	}
 
 	s := &model.Supplier{
-		Kode:     req.Kode,
-		Nama:     req.Nama,
-		PIC:      req.PIC,
-		Telepon:  req.Telepon,
+		Kode:           req.Kode,
+		Nama:           req.Nama,
+		PIC:            req.PIC,
+		Telepon:        req.Telepon,
 		KerjasamaKurir: req.KerjasamaKurir,
-		Alamat:   req.Alamat,
-		NPWP:     req.NPWP,
-		Catatan:  req.Catatan,
-		IsActive: true,
+		Alamat:         req.Alamat,
+		NPWP:           req.NPWP,
+		Catatan:        req.Catatan,
+		IsActive:       true,
 	}
 	if err := h.repo.Create(s); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat supplier", nil)
@@ -195,6 +195,18 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	if s.IsProtected {
 		return utils.Fail(c, fiber.StatusForbidden,
 			"data ini dikunci (Protect) oleh super admin — buka kuncinya dulu sebelum dihapus", nil)
+	}
+	// Cek referensi dulu SEBELUM delete — supplier yang sudah punya riwayat
+	// Purchase Order/Barang Masuk akan selalu ditolak oleh foreign key
+	// constraint di database; tanpa pengecekan ini pengguna cuma melihat
+	// pesan generik "gagal menghapus supplier" tanpa tahu penyebabnya.
+	inUse, err := h.repo.InUse(id)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memeriksa riwayat transaksi supplier", nil)
+	}
+	if inUse {
+		return utils.Fail(c, fiber.StatusConflict,
+			"supplier ini masih punya riwayat Purchase Order/Barang Masuk — tidak bisa dihapus. Nonaktifkan supplier ini saja bila sudah tidak dipakai.", nil)
 	}
 	if err := h.repo.Delete(id); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menghapus supplier", nil)

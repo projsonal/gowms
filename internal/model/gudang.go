@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type Kategori struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
@@ -22,14 +26,19 @@ type Satuan struct {
 func (Satuan) TableName() string { return "satuan" }
 
 type Gudang struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	Nama        string    `json:"nama" gorm:"size:100;not null"`
+	ID   uint   `json:"id" gorm:"primaryKey"`
+	Nama string `json:"nama" gorm:"size:100;not null"`
 	// Kode: kode singkat gudang (mis. "BBU", "MAHANG") — dipakai sebagai
 	// prefix label RSD aset gudang, format {KODE}-RSD-{nomor urut per
 	// gudang}, lihat model.Asset & internal/controller/asset. Disimpan
 	// UPPERCASE, unik per gudang (lihat gudang_controller.go Create/Update).
-	Kode        string    `json:"kode" gorm:"size:20;uniqueIndex"`
-	Alamat      string    `json:"alamat" gorm:"size:255"`
+	Kode   string `json:"kode" gorm:"size:20;uniqueIndex"`
+	Alamat string `json:"alamat" gorm:"size:255"`
+	// Tipe: "pusat" | "cabang" — dipakai untuk mengelompokkan penanda di
+	// Peta Sebaran Aset (lihat constant.TipeGudangPusat/TipeGudangCabang
+	// & internal/controller/asset_gudang MapPoints) supaya posisi aset
+	// milik kantor pusat dan cabang bisa dibedakan warnanya di peta.
+	Tipe string `json:"tipe" gorm:"size:10;not null;default:'cabang';index"`
 	// PIC & Kapasitas: SEBELUMNYA tidak ada di model sama sekali walau
 	// tabel Manajemen Gudang di frontend SUDAH LAMA menampilkan kolom
 	// "PIC" dan "KAPASITAS" — keduanya cuma placeholder statis ("-" dan
@@ -40,12 +49,12 @@ type Gudang struct {
 	// lib/api/mappers.ts frontend), jadi "kapasitas TERPAKAI" per gudang
 	// belum bisa dihitung otomatis tanpa perubahan skema lebih besar
 	// (tabel barang_gudang) — itu di luar cakupan perbaikan kali ini.
-	PIC         string    `json:"pic" gorm:"size:100"`
+	PIC string `json:"pic" gorm:"size:100"`
 	// Telepon: nomor kontak gudang — dipakai sebagai "No. Telepon Pengirim"
 	// di resi pengiriman (Receipt.tsx) saat pengiriman berasal dari gudang
 	// ini. Opsional karena gudang lama belum tentu sudah diisi.
-	Telepon     string    `json:"telepon" gorm:"size:20"`
-	Kapasitas   int       `json:"kapasitas" gorm:"not null;default:0"`
+	Telepon   string `json:"telepon" gorm:"size:20"`
+	Kapasitas int    `json:"kapasitas" gorm:"not null;default:0"`
 	// Latitude/Longitude: opsional — dipakai untuk menampilkan titik lokasi
 	// gudang di peta (lihat DeliveriesMap.tsx frontend, dipakai berdampingan
 	// dengan marker posisi kurir). Nullable karena gudang lama belum tentu
@@ -56,6 +65,8 @@ type Gudang struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	Raks        []Rak     `json:"raks,omitempty" gorm:"foreignKey:GudangID"`
+	// DeletedAt: soft-delete GORM — lihat catatan lengkap di model.BarangRusak.
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (Gudang) TableName() string { return "gudangs" }

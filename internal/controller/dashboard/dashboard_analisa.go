@@ -20,12 +20,20 @@ type BarangRanking struct {
 }
 
 type AnalisaResponse struct {
-	TotalSKU           int64                  `json:"total_sku"`
-	TotalRestockBulanIni int64                `json:"total_restock_bulan_ini"`
-	StokMenipis         int64                  `json:"stok_menipis"`
-	KategoriComposition []KategoriComposition  `json:"kategori_composition"`
-	TopRestocked        []BarangRanking        `json:"top_restocked"`
-	TopKeluar           []BarangRanking        `json:"top_keluar"`
+	TotalSKU             int64                 `json:"total_sku"`
+	TotalRestockBulanIni int64                 `json:"total_restock_bulan_ini"`
+	StokMenipis          int64                 `json:"stok_menipis"`
+	KategoriComposition  []KategoriComposition `json:"kategori_composition"`
+	TopRestocked         []BarangRanking       `json:"top_restocked"`
+	TopKeluar            []BarangRanking       `json:"top_keluar"`
+	// Aset perusahaan (tiang/ODC/ONT/ODP/OLT/transportasi) — lihat catatan
+	// panjang di bawah, dekat query-nya, kenapa ini ditambahkan sebagai
+	// bagian terpisah dari analisa barang di atas.
+	TotalAset     int64                 `json:"total_aset"`
+	AsetRusak     int64                 `json:"aset_rusak"`
+	AsetPerJenis  []KategoriComposition `json:"aset_per_jenis"`
+	AsetPerStatus []KategoriComposition `json:"aset_per_status"`
+	AsetPerGudang []KategoriComposition `json:"aset_per_gudang"`
 }
 
 // Analisa GET /dashboard/analisa — dipakai halaman "Analisa Data". SEMUA
@@ -79,6 +87,41 @@ func (h *Controller) Analisa(c *fiber.Ctx) error {
 		Limit(5).
 		Scan(&topKeluar)
 
+	// --- Analisa Aset Perusahaan (tiang/ODC/ONT/ODP/OLT/transportasi) ---
+	// Bagian TERPISAH dari analisa barang di atas (SKU consumable gudang)
+	// karena memang dua jenis data yang beda sifat: Barang = stok yang
+	// keluar-masuk terus, Aset = infrastruktur yang dipasang & dipantau
+	// kondisinya (lihat internal/model/asset.go) — tapi sama-sama layak
+	// dianalisis di halaman "Analisa Data" yang sama supaya user tidak
+	// perlu buka menu terpisah untuk gambaran keseluruhan.
+	var totalAset int64
+	db.Model(&model.Asset{}).Count(&totalAset)
+
+	var asetRusak int64
+	db.Model(&model.Asset{}).Where("status = ?", "rusak").Count(&asetRusak)
+
+	var asetPerJenis []KategoriComposition
+	db.Model(&model.Asset{}).
+		Select("jenis_aset AS label, COUNT(id) AS value").
+		Group("jenis_aset").
+		Order("value DESC").
+		Scan(&asetPerJenis)
+
+	var asetPerStatus []KategoriComposition
+	db.Model(&model.Asset{}).
+		Select("status AS label, COUNT(id) AS value").
+		Group("status").
+		Order("value DESC").
+		Scan(&asetPerStatus)
+
+	var asetPerGudang []KategoriComposition
+	db.Table("assets").
+		Select("gudangs.nama AS label, COUNT(assets.id) AS value").
+		Joins("JOIN gudangs ON gudangs.id = assets.gudang_id").
+		Group("gudangs.nama").
+		Order("value DESC").
+		Scan(&asetPerGudang)
+
 	return utils.OK(c, "analisa data berhasil diambil", AnalisaResponse{
 		TotalSKU:             totalSKU,
 		TotalRestockBulanIni: totalRestock,
@@ -86,5 +129,10 @@ func (h *Controller) Analisa(c *fiber.Ctx) error {
 		KategoriComposition:  kategoriRows,
 		TopRestocked:         topRestocked,
 		TopKeluar:            topKeluar,
+		TotalAset:            totalAset,
+		AsetRusak:            asetRusak,
+		AsetPerJenis:         asetPerJenis,
+		AsetPerStatus:        asetPerStatus,
+		AsetPerGudang:        asetPerGudang,
 	})
 }

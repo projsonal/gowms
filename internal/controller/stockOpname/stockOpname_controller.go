@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	notification "github.com/projsonal/gowms/internal/controller/notification"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	soRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
@@ -108,6 +109,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(so, toItemInputs(req.Items)); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat dokumen stock opname", nil)
 	}
+	notification.Notify(h.notifRepo, "opname",
+		"Stock Opname Baru",
+		so.NomorOpname+" dilakukan.",
+		"/home/inventory-management", nil, "all")
 	return utils.Created(c, "dokumen stock opname berhasil dibuat", so)
 }
 
@@ -185,7 +190,28 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
+	h.notifyLowStock(so.Items)
 	return utils.OK(c, "stock opname berhasil diselesaikan, selisih telah diterapkan ke stok", so)
+}
+
+// notifyLowStock — sama polanya seperti versi di barang_keluar_controller.go,
+// bedanya di sini "sebelum" & "sesudah" sudah langsung tersedia dari
+// StokSistem (snapshot Barang.Stok saat item opname dibuat) & StokFisik
+// (angka final yang diterapkan ke Barang.Stok, lihat repo.Complete).
+func (h *Controller) notifyLowStock(items []model.StockOpnameItem) {
+	for _, item := range items {
+		if item.Barang == nil || item.Barang.StokMinimum <= 0 || item.Selisih == 0 {
+			continue
+		}
+		justCrossed := item.StokSistem > item.Barang.StokMinimum && item.StokFisik <= item.Barang.StokMinimum
+		if !justCrossed {
+			continue
+		}
+		notification.Notify(h.notifRepo, "stok_menipis",
+			"Stok Menipis",
+			item.Barang.Nama+" tersisa "+strconv.Itoa(item.StokFisik)+" (ambang minimum "+strconv.Itoa(item.Barang.StokMinimum)+").",
+			"/home/kelola-barang", nil, "all")
+	}
 }
 
 // Batalkan PATCH /stock-opname/:id/batalkan

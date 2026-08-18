@@ -4,16 +4,18 @@ import (
 	"time"
 
 	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {
-	repo   maintenanceRepo.Repository
-	jwtSvc *utils.JWTService
+	repo      maintenanceRepo.Repository
+	jwtSvc    *utils.JWTService
+	notifRepo notificationRepo.Repository
 }
 
-func New(repo maintenanceRepo.Repository, jwtSvc *utils.JWTService) *Controller {
-	return &Controller{repo: repo, jwtSvc: jwtSvc}
+func New(repo maintenanceRepo.Repository, jwtSvc *utils.JWTService, notifRepo notificationRepo.Repository) *Controller {
+	return &Controller{repo: repo, jwtSvc: jwtSvc, notifRepo: notifRepo}
 }
 
 type SetRequest struct {

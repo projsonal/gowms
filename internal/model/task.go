@@ -16,7 +16,7 @@ type Task struct {
 	AssignedBy  uint       `json:"assigned_by" gorm:"not null"`
 	Assigner    *User      `json:"assigner,omitempty" gorm:"foreignKey:AssignedBy"`
 	DueDate     time.Time  `json:"due_date" gorm:"not null"`
-	Priority    string     `json:"priority" gorm:"size:10;not null;default:'sedang'"` // rendah | sedang | tinggi
+	Priority    string     `json:"priority" gorm:"size:10;not null;default:'sedang'"`   // rendah | sedang | tinggi
 	Status      string     `json:"status" gorm:"size:10;not null;default:'baru';index"` // baru | proses | selesai
 	CompletedAt *time.Time `json:"completed_at"`
 	CreatedAt   time.Time  `json:"created_at"`

@@ -42,10 +42,20 @@ const (
 const (
 	JenisAsetTiang        = "tiang"
 	JenisAsetODC          = "odc"
+	JenisAsetOLT          = "olt"
 	JenisAsetONT          = "ont"
 	JenisAsetODP          = "odp"
-	JenisAsetOLT          = "olt"
+	JenisAsetModem        = "modem"
 	JenisAsetTransportasi = "transportasi"
+)
+
+// Tipe lokasi gudang: dipakai untuk membedakan kantor pusat vs cabang
+// pada Peta Sebaran Aset (lihat model.Gudang.Tipe & controller asset_gudang
+// MapPoints). Gudang lama yang belum diisi akan otomatis dianggap "cabang"
+// lewat default kolom di database, bukan "pusat".
+const (
+	TipeGudangPusat  = "pusat"
+	TipeGudangCabang = "cabang"
 )
 
 // Status pemeriksaan Barang Rusak (lihat model.BarangRusak).

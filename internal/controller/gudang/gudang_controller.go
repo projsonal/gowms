@@ -14,6 +14,16 @@ import (
 
 const Module = constant.ModuleManajemenGudang
 
+// normalizeTipeGudang mengembalikan constant.TipeGudangCabang sebagai
+// default kalau klien tidak mengirim field "tipe" (mis. klien lama yang
+// belum update), supaya kolom Tipe di database selalu terisi valid.
+func normalizeTipeGudang(tipe string) string {
+	if tipe == constant.TipeGudangPusat {
+		return constant.TipeGudangPusat
+	}
+	return constant.TipeGudangCabang
+}
+
 func parseIDParam(c *fiber.Ctx) (uint, error) {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -240,7 +250,7 @@ func (h *Controller) CreateGudang(c *fiber.Ctx) error {
 	}
 
 	g := &model.Gudang{
-		Nama: req.Nama, Kode: kode, Alamat: req.Alamat, PIC: req.PIC, Telepon: req.Telepon, Kapasitas: req.Kapasitas,
+		Nama: req.Nama, Kode: kode, Tipe: normalizeTipeGudang(req.Tipe), Alamat: req.Alamat, PIC: req.PIC, Telepon: req.Telepon, Kapasitas: req.Kapasitas,
 		Latitude: req.Latitude, Longitude: req.Longitude,
 	}
 	if err := h.repo.CreateGudang(g); err != nil {
@@ -281,6 +291,7 @@ func (h *Controller) UpdateGudang(c *fiber.Ctx) error {
 
 	g.Nama = req.Nama
 	g.Kode = kode
+	g.Tipe = normalizeTipeGudang(req.Tipe)
 	g.Alamat = req.Alamat
 	g.PIC = req.PIC
 	g.Telepon = req.Telepon

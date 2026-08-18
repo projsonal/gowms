@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -82,6 +83,7 @@ func (h *Controller) Activity(c *fiber.Ctx) error {
 	  ORDER BY created_at DESC LIMIT 15
 	`
 	if err := db.Raw(q).Scan(&rows).Error; err != nil {
+		log.Printf("dashboard: gagal mengambil aktivitas terbaru: %v", err)
 		return utils.OK(c, "aktivitas terbaru berhasil diambil", []ActivityItem{})
 	}
 	out := make([]ActivityItem, 0, len(rows))
@@ -123,13 +125,14 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 		CreatedAt time.Time
 	}
 	var rows []row
-	sinceFilter := ""
 	args := []any{}
 	if !since.IsZero() {
-		sinceFilter = "WHERE created_at > ?"
+		// 6 placeholder `?` yang dihasilkan optAnd/optWhere untuk blok
+		// barang_masuk, barang_keluar, pengiriman, purchase_orders,
+		// stock_opname, dan assets di bawah — urutannya harus sama
+		// dengan urutan blok UNION ALL pada query `q`.
 		args = append(args, since, since, since, since, since, since)
 	}
-	_ = sinceFilter
 	// Untuk barang_masuk & barang_keluar, karyawan HANYA perlu diberi tahu
 	// saat statusnya sudah "selesai" (disetujui admin/super_admin lewat
 	// endpoint PATCH .../selesai — lihat middleware `edit` di RegisterRoutes,
@@ -178,6 +181,7 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	}
 	tx := db.Raw(q, args...).Scan(&rows)
 	if tx.Error != nil {
+		log.Printf("dashboard: gagal mengambil notifikasi: %v", tx.Error)
 		return utils.OK(c, "notifikasi kosong", []map[string]any{})
 	}
 	out := make([]map[string]any, 0, len(rows))

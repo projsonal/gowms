@@ -3,6 +3,7 @@ package purchase_order
 import (
 	"time"
 
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
 	poRepo "github.com/projsonal/gowms/internal/repositories/po"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
@@ -14,10 +15,11 @@ type Controller struct {
 	supplierRepo supplierRepo.Repository
 	roleRepo     role.Repository
 	jwtSvc       *utils.JWTService
+	notifRepo    notificationRepo.Repository
 }
 
-func New(repo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService) *Controller {
-	return &Controller{repo: repo, supplierRepo: supplierRepo, roleRepo: roleRepo, jwtSvc: jwtSvc}
+func New(repo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService, notifRepo notificationRepo.Repository) *Controller {
+	return &Controller{repo: repo, supplierRepo: supplierRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, notifRepo: notifRepo}
 }
 
 // ---- DTO ----

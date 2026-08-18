@@ -29,7 +29,10 @@ type GudangRequest struct {
 	Nama string `json:"nama" validate:"required,max=100"`
 	// Kode: kode singkat gudang, dipakai sebagai prefix label RSD aset
 	// (mis. "BBU" -> label "BBU-RSD-0001"). Wajib diisi & unik.
-	Kode      string   `json:"kode" validate:"required,max=20"`
+	Kode string `json:"kode" validate:"required,max=20"`
+	// Tipe: "pusat" | "cabang". Kosong dari klien lama dianggap "cabang"
+	// (lihat penanganan default di Controller.CreateGudang/UpdateGudang).
+	Tipe      string   `json:"tipe" validate:"omitempty,oneof=pusat cabang"`
 	Alamat    string   `json:"alamat" validate:"max=255"`
 	PIC       string   `json:"pic" validate:"max=100"`
 	Telepon   string   `json:"telepon" validate:"max=20"`

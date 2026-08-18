@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	notification "github.com/projsonal/gowms/internal/controller/notification"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	bkRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
@@ -112,6 +113,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(bk); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat dokumen barang keluar", nil)
 	}
+	notification.Notify(h.notifRepo, "out",
+		"Barang Keluar Baru",
+		bk.NomorPengeluaran+" dicatat.",
+		"/home/barang-keluar", nil, "all")
 	return utils.Created(c, "dokumen barang keluar berhasil dibuat", bk)
 }
 
@@ -186,7 +191,37 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
+	h.notifyLowStock(bk.Items)
 	return utils.OK(c, "barang keluar berhasil diselesaikan, stok & rak telah diperbarui", bk)
+}
+
+// notifyLowStock — kirim SATU notifikasi broadcast ("all") per barang yang
+// stoknya BARU SAJA turun ke/di bawah stok_minimum akibat dokumen barang
+// keluar ini. "Baru saja" dihitung dari stok SEBELUM dipotong (Stok saat
+// ini + Qty yang baru dikeluarkan) dibandingkan stok SESUDAH — supaya
+// TIDAK spam notifikasi berulang tiap ada barang keluar lain sementara
+// barang itu memang sudah lama di bawah ambang (item.Barang di sini sudah
+// mencerminkan Stok TERBARU, lihat repo.Complete -> FindByID di akhir).
+// Preferensi "Peringatan Stok Minimum" ON/OFF di Settings -> Notifikasi
+// SENGAJA tidak dicek di sini — itu preferensi TAMPILAN per user/device
+// (lihat NotificationBell.tsx), bukan penentu apakah notifikasi ini boleh
+// dibuat sama sekali (kalau tidak dibuat sama sekali, user yang preferensinya
+// ON tidak akan pernah melihatnya juga).
+func (h *Controller) notifyLowStock(items []model.BarangKeluarItem) {
+	for _, item := range items {
+		if item.Barang == nil || item.Barang.StokMinimum <= 0 {
+			continue
+		}
+		stokSebelum := item.Barang.Stok + item.Qty
+		justCrossed := stokSebelum > item.Barang.StokMinimum && item.Barang.Stok <= item.Barang.StokMinimum
+		if !justCrossed {
+			continue
+		}
+		notification.Notify(h.notifRepo, "stok_menipis",
+			"Stok Menipis",
+			item.Barang.Nama+" tersisa "+strconv.Itoa(item.Barang.Stok)+" (ambang minimum "+strconv.Itoa(item.Barang.StokMinimum)+").",
+			"/home/kelola-barang", nil, "all")
+	}
 }
 
 func (h *Controller) Batalkan(c *fiber.Ctx) error {

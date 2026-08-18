@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	notification "github.com/projsonal/gowms/internal/controller/notification"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	poRepo "github.com/projsonal/gowms/internal/repositories/po"
@@ -92,6 +93,14 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(po); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat purchase order", nil)
 	}
+	// Broadcast "all" (bukan cuma admin/super_admin) supaya konsisten
+	// dengan panel Aktivitas Terbaru dashboard yang lama, yang menampilkan
+	// aktivitas ini ke SEMUA role yang membuka dashboard — lihat catatan
+	// panjang di internal/controller/dashboard/dashboard_extra.go Activity().
+	notification.Notify(h.notifRepo, "po",
+		"Purchase Order Baru",
+		po.NomorPO+" dibuat.",
+		"/home/purchase-order", nil, "all")
 	return utils.Created(c, "purchase order berhasil dibuat", po)
 }
 

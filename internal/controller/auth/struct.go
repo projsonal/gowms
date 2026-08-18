@@ -9,96 +9,77 @@ import (
 	"github.com/projsonal/gowms/pkg/captcha"
 	"github.com/projsonal/gowms/pkg/config"
 	"github.com/projsonal/gowms/pkg/geoip"
+	"github.com/projsonal/gowms/pkg/humancheck"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-const (
-	// (Konstanta metode OTP WhatsApp/SMS sudah dihapus seluruhnya —
-	// login, registrasi, ganti password, dan reset password sekarang
-	// semua memakai captcha, bukan lagi OTP via WhatsApp/SMS.)
+// otpReplayTTL: seberapa lama sebuah kode OTP yang sudah dipakai tetap
+// diingat oleh totpReplayGuard sebelum boleh dibuang dari memori. Dibuat
+// lebih panjang dari window validasi TOTP supaya kode yang baru saja
+// kedaluwarsa tidak bisa dipakai ulang selagi masih "terlihat" valid oleh
+// clock skew toleransi di VerifyTOTP.
+const otpReplayTTL = 5 * time.Minute
 
-	// totpReplayWindow: seberapa lama sebuah kode TOTP yang SUDAH DIPAKAI
-	// ditolak kalau dicoba lagi (lihat totp_replay_guard.go). 90 detik
-	// dipilih supaya menutupi jendela toleransi clock-skew ±1 langkah
-	// (30 detik) yang diizinkan pkg/utils.VerifyTOTP, jadi kode yang
-	// sama tidak bisa dipakai dua kali walau masih dalam toleransi itu.
-	totpReplayWindow = 90 * time.Second
-)
-
+// Controller menangani endpoint HTTP modul Autentikasi (login, register,
+// 2FA, refresh token, dan manajemen sesi).
 type Controller struct {
-	authRepo   authRepo.Repository
-	userRepo   users.Repository
-	roleRepo   role.Repository
-	jwtSvc     *utils.JWTService
-	captchaSvc *captcha.Service
-	totpIssuer string
+	userRepo      users.Repository
+	roleRepo      role.Repository
+	authRepo      authRepo.Repository
+	jwtSvc        *utils.JWTService
+	captchaSvc    *captcha.Service
+	humanCheckSvc *humancheck.Service
+	geoipSvc      geoip.Resolver
+
 	appEnv     string
+	totpIssuer string
 
-	geoipSvc geoip.Resolver
-
-	// otpReplayGuard mencegah satu kode TOTP dipakai berkali-kali dalam
-	// jendela validitasnya — tanpa ini, kode 2FA yang bocor/tersadap bisa
-	// dipakai berulang selama masih dalam 30 detik masa berlakunya.
 	otpReplayGuard *totpReplayGuard
 }
 
 type Params struct {
-	AuthRepo   authRepo.Repository
-	UserRepo   users.Repository
-	RoleRepo   role.Repository
-	JWTSvc     *utils.JWTService
-	CaptchaSvc *captcha.Service
-	Cfg        *config.Config
-	GeoipSvc   geoip.Resolver
+	UserRepo      users.Repository
+	RoleRepo      role.Repository
+	AuthRepo      authRepo.Repository
+	JWTSvc        *utils.JWTService
+	CaptchaSvc    *captcha.Service
+	HumanCheckSvc *humancheck.Service
+	GeoipSvc      geoip.Resolver
+	Cfg           *config.Config
 }
 
+// New membuat instance Controller Autentikasi.
 func New(p Params) *Controller {
 	return &Controller{
-		authRepo:   p.AuthRepo,
-		userRepo:   p.UserRepo,
-		roleRepo:   p.RoleRepo,
-		jwtSvc:     p.JWTSvc,
-		captchaSvc: p.CaptchaSvc,
-		totpIssuer: p.Cfg.TOTP.Issuer,
-		appEnv:     p.Cfg.App.Env,
-		geoipSvc:   p.GeoipSvc,
+		userRepo:      p.UserRepo,
+		roleRepo:      p.RoleRepo,
+		authRepo:      p.AuthRepo,
+		jwtSvc:        p.JWTSvc,
+		captchaSvc:    p.CaptchaSvc,
+		humanCheckSvc: p.HumanCheckSvc,
+		geoipSvc:      p.GeoipSvc,
+		appEnv:        p.Cfg.App.Env,
+		totpIssuer:    p.Cfg.TOTP.Issuer,
 
-		otpReplayGuard: newTOTPReplayGuard(totpReplayWindow),
+		otpReplayGuard: newTOTPReplayGuard(otpReplayTTL),
 	}
 }
 
+// ---- Request DTO ----
+
 type RegisterRequest struct {
 	Username             string `json:"username" validate:"required,min=4,max=50"`
-	// Email OPSIONAL — form registrasi (lihat RegisterStep di frontend)
-	// sudah tidak mengumpulkan email sama sekali; identitas login pakai
-	// username. Field dipertahankan (bukan dihapus) supaya kontrak API
-	// tidak breaking kalau suatu saat email diaktifkan lagi, dan supaya
-	// endpoint lama yang masih mengirim email tetap tervalidasi benar.
 	Email                string `json:"email" validate:"omitempty,email"`
 	Password             string `json:"password" validate:"required,min=8"`
 	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
 	FullName             string `json:"full_name" validate:"required"`
-	// Nomor HP WAJIB diisi (bukan lagi opsional) karena sekarang dipakai
-	// untuk verifikasi OTP saat registrasi (lihat RequestRegisterOTP /
-	// VerifyRegisterOTP di bawah) — tanpa nomor valid, langkah verifikasi
-	// tidak mungkin dijalankan.
-	// Nomor HP OPSIONAL. Verifikasi OTP saat registrasi (WA/SMS) sudah
-	// dilepas dari alur wajib karena gateway pengirimnya sering belum
-	// terkonfigurasi di lingkungan dev — 2FA (Google Authenticator) tetap
-	// jadi satu-satunya lapisan verifikasi wajib untuk aktivasi akun.
-	// Endpoint /auth/register/otp/request & /otp/verify TETAP ada untuk
-	// dipakai lagi nanti kalau gateway WA/SMS sudah siap.
-	PhoneNumber   string `json:"phone_number" validate:"omitempty,e164"`
-	RoleName      string `json:"role_name" validate:"omitempty,oneof=super_admin admin karyawan analis_data"`
-	// Captcha OPSIONAL: aplikasi ini khusus internal perusahaan (bukan
-	// pendaftaran publik terbuka), jadi UI captcha sengaja tidak
-	// ditampilkan lagi di frontend. Kalau frontend TETAP mengirim
-	// captcha_token/captcha_answer (mis. suatu saat captcha diaktifkan
-	// lagi untuk skenario lain), field-nya tetap diverifikasi di bawah —
-	// jadi endpoint ini tetap aman dipakai kalau captcha diaktifkan lagi
-	// nanti tanpa perlu ubah kontrak API.
-	CaptchaToken  string `json:"captcha_token" validate:"omitempty"`
-	CaptchaAnswer string `json:"captcha_answer" validate:"omitempty"`
+	PhoneNumber          string `json:"phone_number"`
+	// RoleName: hanya dihormati kalau APP_ENV != production (lihat
+	// resolveRegisterRoleName), supaya self-register di production selalu
+	// dipaksa jadi role default (karyawan).
+	RoleName      string `json:"role_name"`
+	CaptchaToken  string `json:"captcha_token" validate:"required"`
+	CaptchaAnswer string `json:"captcha_answer" validate:"required"`
 }
 
 type LoginRequest struct {
@@ -106,49 +87,14 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required,min=6"`
 }
 
-type LoginResponse struct {
-	RequirePhoneVerification bool         `json:"require_phone_verification"`
-	RequireSetup2FA          bool         `json:"require_setup_2fa"`
-	RequireOTP               bool         `json:"require_otp"`
-	PendingToken             string       `json:"pending_token,omitempty"`
-	TokenType                string       `json:"token_type,omitempty"`
-	AccessToken              string       `json:"access_token,omitempty"`
-	RefreshToken             string       `json:"refresh_token,omitempty"`
-	User                     *UserSummary `json:"user,omitempty"`
-	Session                  *SessionInfo `json:"session,omitempty"`
-}
-
-type SessionInfo struct {
-	ID             uint   `json:"id,omitempty"`
-	Browser        string `json:"browser"`
-	BrowserVersion string `json:"browser_version"`
-	OS             string `json:"os"`
-	OSVersion      string `json:"os_version"`
-	DeviceType     string `json:"device_type"`
-	IPAddress      string `json:"ip_address"`
-	Location       string `json:"location"`
-	CreatedAt      string `json:"created_at,omitempty"`
-	// IsCurrent: true kalau ini sesi yang sedang dipakai request ini
-	// sendiri (lihat JWTClaims.SessionID) — dipakai frontend menandai
-	// "Perangkat ini" & memicu logout otomatis kalau di-Cabut sendiri.
-	IsCurrent bool `json:"is_current"`
-}
-
-type SessionListResponse struct {
-	Sessions []SessionInfo `json:"sessions"`
-}
-
-type UserSummary struct {
-	ID       uint   `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	RoleID   uint   `json:"role_id"`
-	RoleName string `json:"role_name"`
-}
-
-type Setup2FAResponse struct {
-	Secret    string `json:"secret"`
-	QRCodePNG string `json:"qr_code_png_base64"`
+// ResetPasswordRequest — reset password lewat identifier (username/email),
+// diverifikasi lewat checkbox "verify you are human" ala Cloudflare
+// Turnstile (lihat pkg/humancheck) supaya tetap ada perlindungan dari
+// automated abuse tanpa menyuruh user memecahkan captcha gambar.
+type ResetPasswordRequest struct {
+	Identifier      string `json:"identifier" validate:"required"`
+	NewPassword     string `json:"new_password" validate:"required,min=8"`
+	HumanCheckToken string `json:"human_check_token" validate:"required"`
 }
 
 type Setup2FARequest struct {
@@ -170,26 +116,49 @@ type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// ---------------------------------------------------------------------
+// ---- Response DTO ----
 
-// ResetPasswordRequest — reset password langsung dalam SATU langkah (TIDAK
-// lagi lewat OTP WhatsApp/SMS), diverifikasi captcha gambar self-hosted.
-//
-// Catatan keamanan yang WAJIB diketahui: menghapus verifikasi kepemilikan
-// akun (OTP ke nomor terdaftar) berarti SIAPA PUN yang tahu username/email
-// sebuah akun kini bisa mengganti passwordnya HANYA dengan menyelesaikan
-// captcha — captcha cuma membuktikan "bukan bot", BUKAN "pemilik akun
-// ini". Ini keputusan produk yang diminta eksplisit (menyederhanakan alur
-// lupa password), bukan kelalaian — tapi risikonya nyata: akun bisa
-// diambil alih orang lain yang tahu/menebak username. Mitigasi minimal
-// yang tetap dipertahankan: PasswordResetRateLimiter di RegisterRoutes.
-type ResetPasswordRequest struct {
-	// Identifier boleh username ATAU email.
-	Identifier              string `json:"identifier" validate:"required"`
-	NewPassword             string `json:"new_password" validate:"required,min=8"`
-	NewPasswordConfirmation string `json:"new_password_confirmation" validate:"required,eqfield=NewPassword"`
-	CaptchaToken            string `json:"captcha_token" validate:"required"`
-	CaptchaAnswer           string `json:"captcha_answer" validate:"required"`
+type UserSummary struct {
+	ID       uint   `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	RoleID   uint   `json:"role_id"`
+	RoleName string `json:"role_name"`
+}
+
+type SessionInfo struct {
+	ID             uint   `json:"id"`
+	Browser        string `json:"browser"`
+	BrowserVersion string `json:"browser_version"`
+	OS             string `json:"os"`
+	OSVersion      string `json:"os_version"`
+	DeviceType     string `json:"device_type"`
+	IPAddress      string `json:"ip_address"`
+	Location       string `json:"location"`
+	CreatedAt      string `json:"created_at"`
+	IsCurrent      bool   `json:"is_current"`
+}
+
+type SessionListResponse struct {
+	Sessions []SessionInfo `json:"sessions"`
+}
+
+// LoginResponse dipakai untuk hasil Login/Register/RefreshToken/VerifyOTP.
+// Kalau akun punya 2FA aktif, Login hanya mengisi RequireOTP+PendingToken
+// (field lain kosong) sampai VerifyOTP dipanggil.
+type LoginResponse struct {
+	RequireOTP   bool         `json:"require_otp"`
+	PendingToken string       `json:"pending_token,omitempty"`
+	TokenType    string       `json:"token_type,omitempty"`
+	AccessToken  string       `json:"access_token,omitempty"`
+	RefreshToken string       `json:"refresh_token,omitempty"`
+	User         *UserSummary `json:"user,omitempty"`
+	Session      *SessionInfo `json:"session,omitempty"`
+}
+
+type Setup2FAResponse struct {
+	Secret    string `json:"secret"`
+	QRCodePNG string `json:"qr_code_png"`
 }
 
 type MeResponse struct {
@@ -201,4 +170,5 @@ type MeResponse struct {
 	RoleID       uint   `json:"role_id"`
 	RoleName     string `json:"role_name"`
 	Is2FAEnabled bool   `json:"is_2fa_enabled"`
+	AvatarURL    string `json:"avatar_url"`
 }

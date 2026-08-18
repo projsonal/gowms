@@ -152,9 +152,16 @@ func (r *repository) Selesaikan(id uint, catatan string) (*model.Pengiriman, err
 	now := time.Now()
 	res := r.db.Model(&model.Pengiriman{}).Where(idStatusQuery, id, constant.StatusPGDalamPerjalanan).
 		Updates(map[string]interface{}{
-			"status":     constant.StatusPGTerkirim,
-			"catatan":    catatan,
-			"selesai_at": now,
+			"status":  constant.StatusPGTerkirim,
+			"catatan": catatan,
+			// KOLOM SEBELUMNYA "selesai_at" TIDAK PERNAH ADA di tabel
+			// `pengiriman` — model.Pengiriman field-nya bernama
+			// WaktuTerkirim (gorm otomatis -> kolom `waktu_terkirim`),
+			// bukan SelesaiAt. Karena Updates() di sini pakai map string
+			// mentah (bukan struct), typo ini lolos dari pengecekan
+			// compiler dan baru muncul sebagai error runtime "column ...
+			// does not exist" tiap kali tombol "Tandai Selesai" ditekan.
+			"waktu_terkirim": now,
 		})
 	if res.Error != nil {
 		return nil, res.Error

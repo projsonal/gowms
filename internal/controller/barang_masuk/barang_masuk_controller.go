@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	notification "github.com/projsonal/gowms/internal/controller/notification"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	bmRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
@@ -163,6 +164,10 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(bm); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat dokumen barang masuk", nil)
 	}
+	notification.Notify(h.notifRepo, "in",
+		"Barang Masuk Baru",
+		bm.NomorPenerimaan+" ditambahkan.",
+		"/home/barang-masuk", nil, "all")
 	return utils.Created(c, "dokumen barang masuk berhasil dibuat", bm)
 }
 

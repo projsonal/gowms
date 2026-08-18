@@ -1,12 +1,10 @@
 package users
 
 import (
-	"fmt"
-	"os"
+	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -35,7 +33,7 @@ func (h *Controller) roleNameMap() map[uint]string {
 func (h *Controller) toResponse(u *model.User, roleName string, isOnline bool) Response {
 	return Response{
 		ID: u.ID, Username: u.Username, Email: u.Email, FullName: u.FullName,
-		PhoneNumber: u.PhoneNumber, AvatarURL: u.AvatarURL,
+		PhoneNumber: u.PhoneNumber, AvatarURL: u.AvatarURL(),
 		RoleID: u.RoleID, RoleName: roleName, IsActive: u.IsActive, IsOnline: isOnline,
 		Is2FAEnabled: u.Is2FAEnabled,
 		LastLoginAt:  u.LastLoginAt,
@@ -191,8 +189,8 @@ func (h *Controller) ChangePassword(c *fiber.Ctx) error {
 		return nil
 	}
 
-	if err := h.captchaSvc.Verify(req.CaptchaToken, req.CaptchaAnswer); err != nil {
-		return utils.Fail(c, fiber.StatusBadRequest, "verifikasi captcha gagal: "+err.Error(), nil)
+	if err := h.humanCheckSvc.Verify(req.HumanCheckToken); err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "verifikasi gagal: "+err.Error(), nil)
 	}
 
 	u, err := h.currentUser(c)
@@ -220,11 +218,25 @@ func (h *Controller) ChangePassword(c *fiber.Ctx) error {
 // ubah profilnya sendiri, tapi role & status aktif akun HANYA boleh
 // diubah lewat Manajemen User (Update/Delete di atas, khusus staff) —
 // supaya user tidak bisa menaikkan role-nya sendiri.
+//
+// SENGAJA juga tidak ada field avatar di sini lagi — foto profil PUNYA
+// endpoint sendiri (UploadAvatar/DeleteAvatar di bawah) yang memang
+// dirancang untuk itu. Sebelumnya endpoint ini punya field AvatarURL yang
+// SELALU ditulis ulang ke DB walau tidak dikirim frontend (default string
+// kosong), jadi tiap klik "Simpan Perubahan" di tab Profil (mis. cuma
+// ganti username) otomatis MENGHAPUS foto yang sudah diupload. Dengan
+// avatar dikelola terpisah, bug itu tidak mungkin terulang karena field
+// ini sudah tidak ada.
+//
+// Username BOLEH diubah di sini (aman — JWT dikaitkan ke user ID, bukan
+// username, lihat pkg/utils JWTClaims, jadi ganti username tidak
+// memutus sesi aktif). Tetap perlu dicek unik seperti saat registrasi
+// (lihat pengecekan FindByUsername di UpdateMe).
 type UpdateMeRequest struct {
+	Username    string `json:"username" validate:"omitempty,min=4,max=50"`
 	Email       string `json:"email" validate:"omitempty,email"`
 	FullName    string `json:"full_name"`
 	PhoneNumber string `json:"phone_number"`
-	AvatarURL   string `json:"avatar_url"`
 }
 
 func (h *Controller) UpdateMe(c *fiber.Ctx) error {
@@ -237,17 +249,25 @@ func (h *Controller) UpdateMe(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, cons.ErrPayloadInvalid, nil)
 	}
+	if errs := utils.Validate(req); errs != nil {
+		return utils.Fail(c, fiber.StatusUnprocessableEntity, "validasi gagal", errs)
+	}
 
+	if req.Username != "" && req.Username != u.Username {
+		if existing, err := h.userRepo.FindByUsername(req.Username); err == nil && existing.ID != u.ID {
+			return utils.Fail(c, fiber.StatusConflict, "username sudah dipakai user lain", nil)
+		}
+		u.Username = req.Username
+	}
 	if req.Email != "" {
 		u.Email = req.Email
 	}
 	if req.FullName != "" {
 		u.FullName = req.FullName
 	}
-	// PhoneNumber & AvatarURL boleh dikosongkan lagi oleh user (mis. hapus
-	// foto profil), jadi TIDAK dicek `!= ""` seperti field lain di atas.
+	// PhoneNumber boleh dikosongkan lagi oleh user, jadi TIDAK dicek
+	// `!= ""` seperti Email/FullName di atas.
 	u.PhoneNumber = req.PhoneNumber
-	u.AvatarURL = req.AvatarURL
 
 	if err := h.userRepo.Update(u); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, cons.ErrGagalMemperbaruiUser, nil)
@@ -256,43 +276,88 @@ func (h *Controller) UpdateMe(c *fiber.Ctx) error {
 }
 
 // UploadAvatar POST /users/me/avatar (multipart/form-data, field "avatar")
-// — simpan foto profil di disk lokal (StorageConfig.Path/avatars/) dan
-// langsung update AvatarURL milik user yang sedang login. Dibatasi 2MB &
-// hanya jpg/jpeg/png supaya tidak disalahgunakan untuk upload file besar
-// sembarangan.
+// — simpan ISI foto LANGSUNG di kolom database (AvatarData), BUKAN lagi
+// sebagai file di folder storage/. Foto profil = data pribadi yang
+// sensitif, dan folder storage/ sebelumnya di-serve sebagai file statis
+// publik (app.Static("/uploads", ...) di router.go) tanpa autentikasi
+// apa pun — siapa saja yang menebak/tahu nama filenya bisa buka foto
+// orang lain. Dengan disimpan di DB & diserve lewat ServeAvatar (WAJIB
+// login), foto tidak lagi bisa diakses tanpa otorisasi.
+// Dibatasi 2MB & hanya jpg/jpeg/png supaya tidak disalahgunakan untuk
+// upload file besar/berbahaya sembarangan.
 func (h *Controller) UploadAvatar(c *fiber.Ctx) error {
 	u, err := h.currentUser(c)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, cons.ErrUsersUserNotFound, nil)
 	}
 
-	file, err := c.FormFile("avatar")
+	fh, err := c.FormFile("avatar")
 	if err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "file avatar tidak ditemukan (field: avatar)", nil)
 	}
 	const maxAvatarSize = 2 * 1024 * 1024 // 2MB
-	if file.Size > maxAvatarSize {
+	if fh.Size > maxAvatarSize {
 		return utils.Fail(c, fiber.StatusBadRequest, "ukuran file maksimal 2MB", nil)
 	}
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+	ext := strings.ToLower(filepath.Ext(fh.Filename))
+	contentType := map[string]string{
+		".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+	}[ext]
+	if contentType == "" {
 		return utils.Fail(c, fiber.StatusBadRequest, "format file harus jpg, jpeg, atau png", nil)
 	}
 
-	avatarDir := filepath.Join(h.storagePath, "avatars")
-	if err := os.MkdirAll(avatarDir, 0o755); err != nil {
-		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menyiapkan folder upload", nil)
+	file, err := fh.Open()
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membaca file", nil)
 	}
-	filename := fmt.Sprintf("user-%d-%d%s", u.ID, time.Now().UnixNano(), ext)
-	if err := c.SaveFile(file, filepath.Join(avatarDir, filename)); err != nil {
-		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menyimpan file", nil)
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membaca file", nil)
 	}
 
-	u.AvatarURL = "/uploads/avatars/" + filename
+	u.AvatarData = data
+	u.AvatarContentType = contentType
 	if err := h.userRepo.Update(u); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, cons.ErrGagalMemperbaruiUser, nil)
 	}
 	return utils.OK(c, "foto profil berhasil diperbarui", h.toResponseSingle(u))
+}
+
+// DeleteAvatar DELETE /users/me/avatar — hapus foto profil milik user yang
+// sedang login (satu-satunya cara resmi mengosongkan foto sekarang; lihat
+// catatan di UpdateMeRequest).
+func (h *Controller) DeleteAvatar(c *fiber.Ctx) error {
+	u, err := h.currentUser(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, cons.ErrUsersUserNotFound, nil)
+	}
+	u.AvatarData = nil
+	u.AvatarContentType = ""
+	if err := h.userRepo.Update(u); err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, cons.ErrGagalMemperbaruiUser, nil)
+	}
+	return utils.OK(c, "foto profil berhasil dihapus", h.toResponseSingle(u))
+}
+
+// ServeAvatar GET /users/:id/avatar — WAJIB login (lihat RegisterRoutes),
+// beda dari file statis lama yang bisa dibuka siapa saja tanpa token.
+// Sengaja tidak dibatasi "hanya lihat punya sendiri" karena foto profil
+// juga ditampilkan di daftar user/Manajemen User untuk sesama user yang
+// sudah login.
+func (h *Controller) ServeAvatar(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, cons.ErrIDInvalid, nil)
+	}
+	u, err := h.userRepo.FindByID(uint(id))
+	if err != nil || len(u.AvatarData) == 0 {
+		return utils.Fail(c, fiber.StatusNotFound, "foto profil tidak ditemukan", nil)
+	}
+	c.Set("Content-Type", u.AvatarContentType)
+	c.Set("Cache-Control", "private, max-age=86400")
+	return c.Send(u.AvatarData)
 }
 
 func (h *Controller) RegisterRoutes(router fiber.Router) {
@@ -300,6 +365,10 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	authed.Patch("/me/password", h.ChangePassword)
 	authed.Patch("/me", h.UpdateMe)
 	authed.Post("/me/avatar", h.UploadAvatar)
+	authed.Delete("/me/avatar", h.DeleteAvatar)
+	// :id di sini boleh siapa saja yang sudah login (lihat catatan ServeAvatar),
+	// jadi didaftarkan di grup `authed`, BUKAN grup `g` yang dibatasi admin.
+	authed.Get("/:id/avatar", h.ServeAvatar)
 
 	g := authed.Group("", middleware.RequireRole(cons.RoleSuperAdmin, constant.RoleAdmin))
 	g.Get("/", h.List)
