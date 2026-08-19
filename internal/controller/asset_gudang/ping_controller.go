@@ -1,6 +1,7 @@
 package assetgudang
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -15,10 +16,6 @@ import (
 
 const pingTimeout = 2 * time.Second
 
-// Ping POST /aset/:id/ping — cek konektivitas SATU aset yang punya
-// ip_address terisi, lalu simpan hasilnya (ping_status + last_ping_at).
-// TIDAK mengubah kolom `status` (kondisi fisik aset) — murni indikator
-// konektivitas terpisah, lihat catatan di model.Asset.
 func (h *Controller) Ping(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -62,14 +59,18 @@ func (h *Controller) Ping(c *fiber.Ctx) error {
 	})
 }
 
-// PingAll POST /aset/ping — cek konektivitas SEMUA aset yang punya
-// ip_address terisi secara paralel (dibatasi maxConcurrentPing sekaligus,
-// supaya tidak membanjiri jaringan/CPU kalau asetnya ratusan), dipakai
-// tombol "Cek Semua Ping" di halaman Manajemen Aset.
 func (h *Controller) PingAll(c *fiber.Ctx) error {
-	list, _, err := h.repo.List(utils.PaginationParams{Page: 1, Limit: 100000}, assetRepo.Filter{})
+	results, err := h.runPingSweep()
 	if err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengambil daftar aset", nil)
+	}
+	return utils.OK(c, "ping massal selesai", results)
+}
+
+func (h *Controller) runPingSweep() ([]PingResponse, error) {
+	list, _, err := h.repo.List(utils.PaginationParams{Page: 1, Limit: 100000}, assetRepo.Filter{})
+	if err != nil {
+		return nil, err
 	}
 
 	const maxConcurrentPing = 20
@@ -89,7 +90,7 @@ func (h *Controller) PingAll(c *fiber.Ctx) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			wasOffline := a.PingStatus == "offline"
+			statusLama := a.PingStatus
 			res, perr := netping.Check(a.IPAddress, pingTimeout)
 			now := time.Now()
 			a.LastPingAt = &now
@@ -104,14 +105,16 @@ func (h *Controller) PingAll(c *fiber.Ctx) error {
 			}
 			_ = h.repo.Update(&a)
 
-			// Notifikasi HANYA saat transisi online/unknown -> offline (bukan
-			// tiap kali PingAll dijalankan) — supaya tidak spam notifikasi
-			// berulang untuk perangkat yang memang sudah lama offline.
-			if a.PingStatus == "offline" && !wasOffline {
+			if a.PingStatus == "offline" && statusLama != "offline" {
 				notification.Notify(h.notifRepo, "ping",
-					"Aset Terdeteksi Offline",
-					a.Nama+" ("+a.LabelRSD+") tidak merespon ping.",
-					"/home/aset-gudang", nil, "admin")
+					"⚠ Aset Terdeteksi Down",
+					a.Nama+" ("+a.LabelRSD+") tidak merespon ping — cek koneksi/perangkat segera.",
+					"/home/tracking-aset", nil, "admin")
+			} else if a.PingStatus == "online" && statusLama == "offline" {
+				notification.Notify(h.notifRepo, "ping",
+					"✓ Aset Kembali Online",
+					a.Nama+" ("+a.LabelRSD+") sudah merespon ping kembali.",
+					"/home/tracking-aset", nil, "admin")
 			}
 
 			mu.Lock()
@@ -124,5 +127,20 @@ func (h *Controller) PingAll(c *fiber.Ctx) error {
 	}
 	wg.Wait()
 
-	return utils.OK(c, "ping massal selesai", results)
+	return results, nil
+}
+
+func (h *Controller) StartAutoPingScheduler(interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			if _, err := h.runPingSweep(); err != nil {
+				log.Printf("auto-ping scheduler: gagal mengambil daftar aset: %v", err)
+			}
+		}
+	}()
 }
