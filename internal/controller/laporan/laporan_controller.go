@@ -281,43 +281,58 @@ func computeGenericSummary(headers []string, rows [][]string) [][2]string {
 		lower := strings.ToLower(header)
 		switch {
 		case strings.Contains(lower, "nilai") || strings.Contains(lower, "harga") || strings.Contains(lower, "total"):
-			var sum int64
-			for _, row := range rows {
-				if colIdx >= len(row) {
-					continue
-				}
-				cleaned := strings.ReplaceAll(row[colIdx], ".", "")
-				cleaned = strings.ReplaceAll(cleaned, ",", "")
-				cleaned = strings.TrimSpace(strings.TrimPrefix(cleaned, "Rp"))
-				if n, err := strconv.ParseInt(cleaned, 10, 64); err == nil {
-					sum += n
-				}
-			}
+			sum := sumCurrencyColumn(rows, colIdx)
 			summary = append(summary, [2]string{"Total " + header, "Rp " + formatRupiah(sum)})
 		case strings.Contains(lower, "stok") || strings.Contains(lower, "kuantitas") || strings.Contains(lower, "qty"):
-			var sum int64
-			for _, row := range rows {
-				if colIdx >= len(row) {
-					continue
-				}
-				if n, err := strconv.ParseInt(strings.TrimSpace(row[colIdx]), 10, 64); err == nil {
-					sum += n
-				}
-			}
+			sum := sumNumericColumn(rows, colIdx)
 			summary = append(summary, [2]string{"Total " + header, strconv.FormatInt(sum, 10)})
 		case strings.Contains(lower, "gudang"):
-			distinct := map[string]struct{}{}
-			for _, row := range rows {
-				if colIdx < len(row) && row[colIdx] != "" && row[colIdx] != "-" {
-					distinct[row[colIdx]] = struct{}{}
-				}
-			}
-			if len(distinct) > 0 {
-				summary = append(summary, [2]string{"Gudang Terlibat", strconv.Itoa(len(distinct))})
+			count := countDistinctColumn(rows, colIdx)
+			if count > 0 {
+				summary = append(summary, [2]string{"Gudang Terlibat", strconv.Itoa(count)})
 			}
 		}
 	}
 	return summary
+}
+
+func sumCurrencyColumn(rows [][]string, colIdx int) int64 {
+	var sum int64
+	for _, row := range rows {
+		if colIdx >= len(row) {
+			continue
+		}
+		cleaned := strings.ReplaceAll(row[colIdx], ".", "")
+		cleaned = strings.ReplaceAll(cleaned, ",", "")
+		cleaned = strings.TrimSpace(strings.TrimPrefix(cleaned, "Rp"))
+		if n, err := strconv.ParseInt(cleaned, 10, 64); err == nil {
+			sum += n
+		}
+	}
+	return sum
+}
+
+func sumNumericColumn(rows [][]string, colIdx int) int64 {
+	var sum int64
+	for _, row := range rows {
+		if colIdx >= len(row) {
+			continue
+		}
+		if n, err := strconv.ParseInt(strings.TrimSpace(row[colIdx]), 10, 64); err == nil {
+			sum += n
+		}
+	}
+	return sum
+}
+
+func countDistinctColumn(rows [][]string, colIdx int) int {
+	distinct := map[string]struct{}{}
+	for _, row := range rows {
+		if colIdx < len(row) && row[colIdx] != "" && row[colIdx] != "-" {
+			distinct[row[colIdx]] = struct{}{}
+		}
+	}
+	return len(distinct)
 }
 
 func (h *Controller) Export(c *fiber.Ctx) error {
@@ -364,15 +379,16 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 		return c.Send(data)
 	case constant.FormatWord:
 		// Docx dirakit manual dari OOXML mentah (lihat pkg/reportexport/docs.go)
-		// TANPA library chart — chart sungguhan tidak bisa disisipkan di sini,
-		// jadi FALLBACK ke insight teks otomatis (lihat ChartData.Insight()),
-		// sesuai instruksi eksplisit: kalau gambar chart tidak bisa
-		// disesuaikan ke suatu format, cukup insight tekstualnya saja.
+		// TANPA library chart — chart SUNGGUHAN (gambar vektor) tidak bisa
+		// disisipkan, jadi ToDocx menggambar bar chart TEKS pakai tabel
+		// (mirip drawBarChart di pdf.go, cuma horizontal) dari `chart` yang
+		// sama persis dipakai PDF/Excel. `insight` tetap dikirim terpisah
+		// sebagai kalimat pelengkap di bawah bar chart teks itu.
 		insight := ""
 		if chart != nil {
-			insight = "Analisa Data — " + chart.Title + ": " + chart.Insight()
+			insight = "Total keseluruhan & rincian: " + chart.Insight()
 		}
-		data, err := reportexport.ToDocx(title, summary, headers, rows, insight)
+		data, err := reportexport.ToDocx(title, summary, headers, rows, toExportChart(chart), insight)
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat file docx", nil)
 		}
@@ -400,11 +416,6 @@ func (h *Controller) Types(c *fiber.Ctx) error {
 	return utils.OK(c, "daftar tipe laporan berhasil diambil", types)
 }
 
-// Preview GET /laporan/preview?tipe=&dari=&sampai= — dipakai halaman
-// laporan di frontend untuk menampilkan tabel "Rincian Laporan" & kartu
-// ringkasan dengan data ASLI dari database, sebelum user memutuskan mau
-// diunduh atau tidak (sebelumnya frontend cuma menampilkan data dummy dan
-// baru memanggil backend saat tombol "Unduh Laporan" ditekan).
 func (h *Controller) Preview(c *fiber.Ctx) error {
 	tipe := c.Query("tipe", "")
 	dari, sampai, err := parseDateRange(c)

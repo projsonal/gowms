@@ -64,7 +64,55 @@ func AutoMigrate(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
-	return ensureAssetPartialUniqueIndexes(db)
+	if err := ensureAssetPartialUniqueIndexes(db); err != nil {
+		return err
+	}
+	return ensureUsersEmailNotUnique(db)
+}
+
+// ensureUsersEmailNotUnique membuang unique index PENUH lama di kolom
+// users.email, kalau masih ada peninggalan skema versi lama.
+//
+// Latar belakang: sama persis pola masalahnya dengan
+// ensureAssetPartialUniqueIndexes di atas — model.User.Email DULU
+// bertanda `gorm:"uniqueIndex"`, lalu diubah jadi opsional/tidak unik
+// (lihat komentar di internal/model/users.go) karena form registrasi
+// sekarang tidak lagi mengumpulkan email sama sekali (selalu dikirim
+// string kosong ""). Masalahnya: `db.AutoMigrate()` GORM TIDAK PERNAH
+// menghapus index/constraint lama yang sudah tidak dideklarasikan lagi
+// di struct — ia hanya menambah yang baru. Jadi di database yang sempat
+// dimigrasikan sebelum perubahan itu, unique index lama di kolom email
+// MASIH ADA secara fisik walau strukturnya sudah tidak
+// mendeklarasikannya lagi.
+//
+// Akibatnya: akun PERTAMA yang daftar dengan email kosong berhasil,
+// tapi akun KEDUA dan seterusnya (yang email-nya juga "") ditolak
+// Postgres sebagai pelanggaran unique constraint ("" dianggap nilai
+// biasa yang sama, bukan seperti NULL yang boleh berulang) — muncul ke
+// pengguna sebagai error generik 500 "gagal membuat akun" saat
+// mendaftar (utils.Fail di Register(), auth_controller.go), tanpa
+// penjelasan lebih lanjut karena pesan error asli dari database
+// sengaja tidak dibocorkan ke klien.
+//
+// Dijalankan tiap startup, idempotent & aman di database manapun
+// (termasuk yang belum pernah punya index itu sama sekali — instalasi
+// baru): dicari lewat definisi index-nya (bukan ditebak namanya, supaya
+// tetap aman kalau versi GORM lama memberi nama berbeda dari konvensi
+// default `idx_users_email`), baru dibuang kalau memang ketemu.
+func ensureUsersEmailNotUnique(db *gorm.DB) error {
+	stmt := `DO $$
+	DECLARE r record;
+	BEGIN
+		FOR r IN
+			SELECT indexname FROM pg_indexes
+			WHERE tablename = 'users'
+			  AND indexdef ILIKE '%UNIQUE INDEX%'
+			  AND indexdef ILIKE '%(email)%'
+		LOOP
+			EXECUTE 'DROP INDEX IF EXISTS ' || quote_ident(r.indexname);
+		END LOOP;
+	END $$;`
+	return db.Exec(stmt).Error
 }
 
 // ensureAssetPartialUniqueIndexes menegakkan keunikan label_rsd/kode_ba di
@@ -81,7 +129,7 @@ func AutoMigrate(db *gorm.DB) error {
 // saat menambah/mengedit aset di Manajemen Gudang.
 //
 // Solusinya: index unik hanya berlaku untuk baris yang kolomnya TIDAK
-// kosong (`WHERE label_rsd <> ''` / `WHERE kode_ba <> ''`). Baris dengan
+// kosong (`WHERE label_rsd <> ”` / `WHERE kode_ba <> ”`). Baris dengan
 // nilai kosong tidak ikut ditegakkan keunikannya sama sekali — sesuai
 // maksud aslinya (kolom itu memang "tidak relevan" untuk jenis aset
 // tersebut, bukan bagian dari data yang perlu unik).
