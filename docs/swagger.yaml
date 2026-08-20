@@ -201,7 +201,7 @@ paths:
       summary: Readiness probe
       tags:
       - Health
-  /stockrsd/auth/login:
+  /wms-rsd/auth/login:
     post:
       consumes:
       - application/json
@@ -241,7 +241,7 @@ paths:
       summary: Login
       tags:
       - Auth
-  /stockrsd/auth/logout:
+  /wms-rsd/auth/logout:
     post:
       description: Revoke seluruh sesi/refresh token milik user yang sedang login.
       produces:
@@ -260,7 +260,7 @@ paths:
       summary: Logout
       tags:
       - Auth
-  /stockrsd/auth/me:
+  /wms-rsd/auth/me:
     get:
       description: Mengambil data user yang sedang login berdasarkan access token.
       produces:
@@ -284,7 +284,7 @@ paths:
       summary: Profil user aktif
       tags:
       - Auth
-  /stockrsd/auth/refresh:
+  /wms-rsd/auth/refresh:
     post:
       consumes:
       - application/json
@@ -316,7 +316,7 @@ paths:
       summary: Perbarui access token
       tags:
       - Auth
-  /stockrsd/auth/register:
+  /wms-rsd/auth/register:
     post:
       consumes:
       - application/json
@@ -352,7 +352,7 @@ paths:
       summary: Registrasi akun baru
       tags:
       - Auth
-  /stockrsd/barang:
+  /wms-rsd/barang:
     get:
       description: Daftar barang dengan pagination & filter.
       parameters:
@@ -432,7 +432,7 @@ paths:
       summary: Tambah barang baru
       tags:
       - Barang
-  /stockrsd/barang/{id}:
+  /wms-rsd/barang/{id}:
     get:
       parameters:
       - description: ID barang

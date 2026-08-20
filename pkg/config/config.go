@@ -158,7 +158,7 @@ func Load() *Config {
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "postgres"),
 			Password: getEnv("DB_PASSWORD", "t4mp4n"),
-			Name:     getEnv("DB_NAME", "stockrsd"),
+			Name:     getEnv("DB_NAME", "wms-rsd"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		JWT: JWTConfig{

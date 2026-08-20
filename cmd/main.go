@@ -15,7 +15,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	docs.SwaggerInfo.BasePath = "/stockrsd"
+	docs.SwaggerInfo.BasePath = "/wms-rsd"
 	docs.SwaggerInfo.Title = cfg.App.Name
 	docs.SwaggerInfo.Version = appinfo.CurrentVersion
 

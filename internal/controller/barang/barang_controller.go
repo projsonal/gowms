@@ -93,7 +93,7 @@ func parseListFilter(c *fiber.Ctx) barangRepo.Filter {
 // @Param        status        query     string  false  "aktif untuk hanya barang aktif"
 // @Success      200  {object}  utils.Envelope
 // @Failure      401  {object}  utils.Envelope
-// @Router       /stockrsd/barang [get]
+// @Router       /wms-rsd/barang [get]
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := parseListFilter(c)

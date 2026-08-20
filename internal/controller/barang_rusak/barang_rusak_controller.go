@@ -1,8 +1,7 @@
 package barang_rusak
 
 import (
-	"fmt"
-	"os"
+	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -192,8 +191,10 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 
 // UploadFoto POST /barang-rusak/:id/foto (multipart/form-data, field
 // "foto") — unggah foto bukti kondisi fisik barang rusak, pola sama
-// seperti UploadAvatar (lihat internal/controller/users). Dibatasi 2MB &
-// hanya jpg/jpeg/png. Boleh diunggah kapan saja (tidak dikunci status
+// seperti UploadAvatar (lihat internal/controller/users): disimpan
+// LANGSUNG di database (bytea), BUKAN file statis di disk — lihat catatan
+// lengkap di model.BarangRusak.FotoData. Dibatasi 2MB & hanya
+// jpg/jpeg/png. Boleh diunggah kapan saja (tidak dikunci status
 // "pengecekan" seperti Update biasa) supaya foto tambahan masih bisa
 // ditambah setelah hasil pemeriksaan dikunci.
 func (h *Controller) UploadFoto(c *fiber.Ctx) error {
@@ -215,24 +216,55 @@ func (h *Controller) UploadFoto(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusBadRequest, "ukuran file maksimal 2MB", nil)
 	}
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+	var contentType string
+	switch ext {
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	default:
 		return utils.Fail(c, fiber.StatusBadRequest, "format file harus jpg, jpeg, atau png", nil)
 	}
 
-	fotoDir := filepath.Join(h.storagePath, "barang-rusak")
-	if err := os.MkdirAll(fotoDir, 0o755); err != nil {
-		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menyiapkan folder upload", nil)
+	opened, err := file.Open()
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membaca file foto", nil)
 	}
-	filename := fmt.Sprintf("barang-rusak-%d-%d%s", b.ID, time.Now().UnixNano(), ext)
-	if err := c.SaveFile(file, filepath.Join(fotoDir, filename)); err != nil {
-		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menyimpan file", nil)
+	defer opened.Close()
+	data, err := io.ReadAll(opened)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membaca file foto", nil)
 	}
 
-	b.FotoURL = "/uploads/barang-rusak/" + filename
+	b.FotoData = data
+	b.FotoContentType = contentType
 	if err := h.repo.Update(b); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menyimpan foto bukti", nil)
 	}
 	return utils.OK(c, "foto bukti berhasil diunggah", b)
+}
+
+// ServeFoto GET /barang-rusak/:id/foto — WAJIB login (lihat
+// RegisterRoutes), pola sama seperti ServeAvatar (internal/controller/users).
+// Menyajikan foto bukti LANGSUNG dari database (bytea), bukan file
+// statis — lihat catatan lengkap di model.BarangRusak.FotoData kenapa ini
+// sengaja tidak lewat app.Static("/uploads", ...) yang tidak punya
+// proteksi login sama sekali.
+func (h *Controller) ServeFoto(c *fiber.Ctx) error {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "id tidak valid", nil)
+	}
+	b, err := h.repo.FindByID(id)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, "data barang rusak tidak ditemukan", nil)
+	}
+	if len(b.FotoData) == 0 {
+		return utils.Fail(c, fiber.StatusNotFound, "belum ada foto bukti yang diunggah", nil)
+	}
+	c.Set("Content-Type", b.FotoContentType)
+	c.Set("Cache-Control", "private, max-age=86400")
+	return c.Send(b.FotoData)
 }
 
 func (h *Controller) RegisterRoutes(router fiber.Router) {
@@ -249,6 +281,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Post("/", tambah, h.Create)
 	g.Put("/:id", edit, h.Update)
 	g.Post("/:id/foto", edit, h.UploadFoto)
+	g.Get("/:id/foto", view, h.ServeFoto)
 	g.Patch("/:id/inspeksi", edit, onlyStaff, h.Inspeksi)
 	g.Delete("/:id", onlyStaff, edit, h.Delete)
 }

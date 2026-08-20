@@ -1,12 +1,15 @@
 package users
 
 import (
+	"errors"
 	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
@@ -105,7 +108,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 
 	u := &model.User{
 		Username: req.Username, Email: req.Email, PasswordHash: hashed,
-		FullName: req.FullName, RoleID: req.RoleID, IsActive: true,
+		FullName: req.FullName, PhoneNumber: req.PhoneNumber, RoleID: req.RoleID, IsActive: true,
 	}
 	if err := h.userRepo.Create(u); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, cons.ErrGagalMembuatUser, nil)
@@ -134,6 +137,9 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	}
 	if req.FullName != "" {
 		u.FullName = req.FullName
+	}
+	if req.PhoneNumber != nil {
+		u.PhoneNumber = *req.PhoneNumber
 	}
 	if req.RoleID != 0 {
 		u.RoleID = req.RoleID
@@ -360,6 +366,65 @@ func (h *Controller) ServeAvatar(c *fiber.Ctx) error {
 	return c.Send(u.AvatarData)
 }
 
+// UserSessions GET /users/:id/sessions — HANYA super_admin (lihat
+// RegisterRoutes). Daftar perangkat/sesi login AKTIF milik user LAIN
+// (bukan diri sendiri, itu sudah ada di GET /auth/sessions) — dipakai
+// aksi "Lihat Perangkat" di Manajemen User supaya Super Admin bisa tahu
+// dari mana saja seorang user sedang login, sebelum memutuskan mencabut
+// salah satu/semua sesinya.
+func (h *Controller) UserSessions(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, cons.ErrIDInvalid, nil)
+	}
+	if _, err := h.userRepo.FindByID(uint(id)); err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, cons.ErrUsersUserNotFound, nil)
+	}
+
+	sessions, err := h.authRepo.ListActiveSessions(uint(id))
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memuat daftar sesi", nil)
+	}
+
+	result := make([]SessionResponse, 0, len(sessions))
+	for _, s := range sessions {
+		result = append(result, SessionResponse{
+			ID: s.ID, Browser: s.Browser, BrowserVersion: s.BrowserVersion,
+			OS: s.OS, OSVersion: s.OSVersion, DeviceType: s.DeviceType,
+			IPAddress: s.IPAddress, Location: s.Location,
+			CreatedAt: s.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return utils.OK(c, "berhasil memuat daftar sesi aktif", SessionListResponse{Sessions: result})
+}
+
+// RevokeUserSession DELETE /users/:id/sessions/:sessionId — HANYA
+// super_admin. Mencabut SATU sesi/perangkat milik user LAIN secara paksa
+// (mis. HP yang hilang, atau sekadar mengamankan akun) — user tsb akan
+// otomatis ter-logout dari perangkat itu begitu access token-nya
+// kedaluwarsa/dipakai refresh, karena refresh token-nya sudah dicabut.
+func (h *Controller) RevokeUserSession(c *fiber.Ctx) error {
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, cons.ErrIDInvalid, nil)
+	}
+	sessionID, err := strconv.ParseUint(c.Params("sessionId"), 10, 64)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "id sesi tidak valid", nil)
+	}
+	if _, err := h.userRepo.FindByID(uint(id)); err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, cons.ErrUsersUserNotFound, nil)
+	}
+
+	if err := h.authRepo.RevokeSession(uint(id), uint(sessionID)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.Fail(c, fiber.StatusNotFound, "sesi tidak ditemukan", nil)
+		}
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mencabut sesi", nil)
+	}
+	return utils.OK(c, "sesi berhasil dicabut, perangkat tsb otomatis ter-logout", nil)
+}
+
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	authed := router.Group("/users", middleware.JWTAuth(h.jwtSvc))
 	authed.Patch("/me/password", h.ChangePassword)
@@ -377,4 +442,9 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Put("/:id", h.Update)
 	// Delete (nonaktifkan akun) HANYA super_admin, sama seperti Create.
 	g.Delete("/:id", middleware.RequireRole(cons.RoleSuperAdmin), h.Delete)
+	// Lihat & cabut sesi/perangkat user LAIN — HANYA super_admin (aksi
+	// keamanan sensitif, beda dari GET/DELETE /auth/sessions yang cuma
+	// untuk sesi diri sendiri, lihat catatan di UserSessions di atas).
+	g.Get("/:id/sessions", middleware.RequireRole(cons.RoleSuperAdmin), h.UserSessions)
+	g.Delete("/:id/sessions/:sessionId", middleware.RequireRole(cons.RoleSuperAdmin), h.RevokeUserSession)
 }

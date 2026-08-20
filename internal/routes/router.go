@@ -67,7 +67,13 @@ func SetupRouter(deps *Dependencies) *fiber.App {
 		swaggerRoute.Get("/*", fiberSwagger.HandlerDefault)
 	}
 
-	api := app.Group("/stockrsd")
+	// Prefix rute API. Sebelumnya "/stockrsd" (nama lama proyek/database) —
+	// diganti "/wms-rsd" supaya konsisten dengan nama database baru
+	// (lihat pkg/config/config.go DB_NAME). Kalau diubah lagi, pastikan
+	// NEXT_PUBLIC_API_BASE_URL di frontend (wms/.env.local) ikut disamakan
+	// — keduanya HARUS identik, backend tidak otomatis redirect dari
+	// prefix lama.
+	api := app.Group("/wms-rsd")
 
 	deps.CaptchaController.RegisterRoutes(api)
 	deps.HumanCheckController.RegisterRoutes(api)

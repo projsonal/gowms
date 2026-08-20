@@ -1,6 +1,8 @@
 package model
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -32,11 +34,22 @@ type BarangRusak struct {
 	NamaBarang  string `json:"nama_barang" gorm:"size:150;not null"`
 	Keterangan  string `json:"keterangan" gorm:"size:500"`
 
-	// FotoURL: path relatif ke foto bukti kondisi fisik barang rusak
-	// (lihat POST /barang-rusak/:id/foto, pola sama seperti avatar user —
-	// disimpan di StorageConfig.Path/barang-rusak/, disajikan statis lewat
-	// app.Static("/uploads", ...)). Opsional — kosong kalau belum diunggah.
-	FotoURL string `json:"foto_url" gorm:"size:255"`
+	// FotoData/FotoContentType: foto bukti kondisi fisik barang rusak
+	// disimpan LANGSUNG di database (bytea), BUKAN sebagai file statis di
+	// folder storage/ yang disajikan lewat app.Static("/uploads", ...) —
+	// pola SAMA PERSIS dengan alasan model.User.AvatarData: foto bukti
+	// rusak bisa memuat info sensitif (kondisi gudang, lokasi, dst) dan
+	// app.Static("/uploads", ...) TIDAK punya proteksi login sama sekali,
+	// jadi sebelumnya siapa pun dengan URL-nya bisa lihat tanpa login.
+	// Diisi lewat POST /barang-rusak/:id/foto, dibaca lewat
+	// GET /barang-rusak/:id/foto (WAJIB login — lihat
+	// barang_rusak_controller.go UploadFoto/ServeFoto). json:"-" karena
+	// binary besar tidak boleh ikut ke-serialize ke payload JSON biasa —
+	// lihat MarshalJSON di bawah, yang menghitung "foto_url" secara
+	// dinamis (path endpoint, BUKAN data binary-nya) mengikuti pola
+	// User.AvatarURL().
+	FotoData        []byte `json:"-" gorm:"type:bytea"`
+	FotoContentType string `json:"-" gorm:"size:100"`
 
 	// JenisBarang: hasil klasifikasi SETELAH pengecekan fisik —
 	// "retur" (bisa diretur ke supplier) | "rusak" (tidak bisa diretur).
@@ -64,3 +77,35 @@ type BarangRusak struct {
 }
 
 func (BarangRusak) TableName() string { return "barang_rusak" }
+
+// FotoURL menghitung URL untuk mengambil foto bukti lewat
+// GET /barang-rusak/:id/foto (WAJIB login — lihat
+// internal/controller/barang_rusak ServeFoto). Padanan langsung dari
+// model.User.AvatarURL() — lihat catatan lengkap di field FotoData di
+// atas kenapa fotonya disimpan di database, bukan file statis. Kosong
+// berarti belum ada foto diunggah — frontend jatuh ke placeholder.
+// Query string ?v=<updated_at> memaksa browser ambil ulang gambar
+// setelah foto diganti (nama URL-nya sendiri tidak berubah).
+func (b BarangRusak) FotoURL() string {
+	if len(b.FotoData) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("/barang-rusak/%d/foto?v=%d", b.ID, b.UpdatedAt.Unix())
+}
+
+// MarshalJSON menyisipkan field "foto_url" HASIL HITUNGAN (dari method
+// FotoURL() di atas) ke output JSON, tanpa perlu Response DTO terpisah di
+// controller (handler-handler modul ini masih mengembalikan *BarangRusak
+// langsung, lihat barang_rusak_controller.go). Trik type-alias supaya
+// TIDAK rekursi tak berhingga (memanggil json.Marshal(b) lagi di dalam
+// method MarshalJSON milik BarangRusak sendiri).
+func (b BarangRusak) MarshalJSON() ([]byte, error) {
+	type Alias BarangRusak
+	return json.Marshal(struct {
+		Alias
+		FotoURL string `json:"foto_url"`
+	}{
+		Alias:   Alias(b),
+		FotoURL: b.FotoURL(),
+	})
+}

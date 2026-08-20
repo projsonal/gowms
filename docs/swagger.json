@@ -56,7 +56,7 @@
                 }
             }
         },
-        "/stockrsd/auth/login": {
+        "/wms-rsd/auth/login": {
             "post": {
                 "description": "Login dengan username \u0026 password. Jika 2FA belum aktif, respons meminta setup 2FA; jika sudah aktif, meminta verifikasi OTP.",
                 "consumes": [
@@ -120,7 +120,7 @@
                 }
             }
         },
-        "/stockrsd/auth/logout": {
+        "/wms-rsd/auth/logout": {
             "post": {
                 "security": [
                     {
@@ -151,7 +151,7 @@
                 }
             }
         },
-        "/stockrsd/auth/me": {
+        "/wms-rsd/auth/me": {
             "get": {
                 "security": [
                     {
@@ -194,7 +194,7 @@
                 }
             }
         },
-        "/stockrsd/auth/refresh": {
+        "/wms-rsd/auth/refresh": {
             "post": {
                 "description": "Tukar refresh token yang masih valid dengan pasangan access+refresh token baru.",
                 "consumes": [
@@ -246,7 +246,7 @@
                 }
             }
         },
-        "/stockrsd/auth/register": {
+        "/wms-rsd/auth/register": {
             "post": {
                 "description": "Mendaftarkan user baru. Wajib menyertakan token \u0026 jawaban captcha yang valid.",
                 "consumes": [
@@ -304,7 +304,7 @@
                 }
             }
         },
-        "/stockrsd/barang": {
+        "/wms-rsd/barang": {
             "get": {
                 "security": [
                     {
@@ -429,7 +429,7 @@
                 }
             }
         },
-        "/stockrsd/barang/{id}": {
+        "/wms-rsd/barang/{id}": {
             "get": {
                 "security": [
                     {

@@ -33,7 +33,7 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.StockOpna
 		return nil, 0, err
 	}
 	if err := p.Apply(q.Session(&gorm.Session{}).
-		Preload("Gudang").Preload("Items").Order("id desc")).
+		Preload("Gudang").Preload("Items").Preload("Items.Barang").Order("id desc")).
 		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}

@@ -195,7 +195,7 @@ func UsernameCheckRateLimiter() fiber.Handler {
 
 // ---------------------------------------------------------------------
 // Global rate limiter — mitigasi dasar terhadap DDoS/brute-force
-// volumetrik pada SELURUH endpoint /stockrsd, di luar limiter spesifik di
+// volumetrik pada SELURUH endpoint /wms-rsd, di luar limiter spesifik di
 // atas yang menyasar endpoint sensitif tertentu (login/register/OTP).
 // Ini bukan pengganti proteksi DDoS di layer jaringan (CDN/WAF), tapi
 // lini pertahanan minimal di level aplikasi — pola yang sama juga dipakai
