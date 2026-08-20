@@ -201,8 +201,6 @@ func (h *Controller) buildChart(tipe string, headers []string, rows [][]string, 
 		return computeDateSeriesChart("Barang Masuk per Periode", headers, rows, []string{"Tanggal"}, granularity)
 	case constant.LaporanBarangRetur:
 		return computeDateSeriesChart("Barang Retur per Periode", headers, rows, []string{"Tanggal Diperiksa"}, granularity)
-	case constant.LaporanPO:
-		return computeDateSeriesChart("Purchase Order per Periode", headers, rows, []string{"Tanggal PO"}, granularity)
 	case constant.LaporanStokOpname:
 		return computeDateSeriesChart("Stock Opname per Periode", headers, rows, []string{"Tanggal"}, granularity)
 	case constant.LaporanStokBarang:

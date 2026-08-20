@@ -16,10 +16,9 @@ const roleNameQuery = "name = ?"
 
 var modules = []string{
 	constant.ModuleDashboard, "kategori", "satuan", constant.ModuleManajemenGudang, "rak", "barang", constant.ModuleKelolaBarang,
-	constant.ModuleSupplier, constant.ModulePurchaseOrder,
 	constant.ModuleBarangMasuk, constant.ModuleBarangKeluar,
-	constant.ModuleStockOpname, constant.ModulePengiriman,
-	constant.ModuleLaporan, constant.ModuleManajemenUser, constant.ModuleSettings, "notifikasi", constant.ModuleCOD,
+	constant.ModuleStockOpname,
+	constant.ModuleLaporan, constant.ModuleManajemenUser, constant.ModuleSettings, "notifikasi",
 	constant.ModuleAsetGudang, constant.ModuleBarangRusak,
 }
 var actions = []string{constant.ActionView, constant.ActionTambah, constant.ActionEdit, constant.ActionApprovalReject, constant.ActionPrint, constant.ActionAssignDelegasi}
@@ -136,24 +135,6 @@ func findOrCreateGudangDenganKode(db *gorm.DB, nama, alamat, kode string) model.
 	return g
 }
 
-func seedSuppliers(db *gorm.DB) []model.Supplier {
-	pic1, pic2, pic3 := "Bpk. Hadi", "Ibu Rina", "Bpk. Andi"
-	suppliers := []model.Supplier{
-		{Kode: "SUP-01", Nama: "PT Sumber Rejeki", PIC: &pic1, Telepon: "021-5567890", Alamat: "Cikarang", IsActive: true},
-		{Kode: "SUP-02", Nama: "CV Mitra Sejahtera", PIC: &pic2, Telepon: "022-2211445", Alamat: "Bandung", IsActive: true},
-		{Kode: "SUP-03", Nama: "PT Logam Prima", PIC: &pic3, Telepon: "021-8899221", Alamat: "Bekasi", IsActive: true},
-	}
-	for i := range suppliers {
-		var e model.Supplier
-		if db.Where("kode = ?", suppliers[i].Kode).First(&e).Error == gorm.ErrRecordNotFound {
-			db.Create(&suppliers[i])
-		} else {
-			suppliers[i] = e
-		}
-	}
-	return suppliers
-}
-
 func seedBarang(db *gorm.DB, katID, satID uint) {
 	barangList := []model.Barang{
 		{KodeBarang: "BRG-001", Nama: "Sarung Tangan Steril M", KategoriID: katID, SatuanID: satID, StokMinimum: 50, HargaBeli: 45000, Stok: 245, IsActive: true},
@@ -169,25 +150,7 @@ func seedBarang(db *gorm.DB, katID, satID uint) {
 	}
 }
 
-func seedPurchaseOrders(db *gorm.DB, suppliers []model.Supplier, adminRef uint, now time.Time) {
-	statuses := []string{constant.StatusPODisetujui, constant.StatusPODiajukan, constant.StatusPODraft, constant.StatusPOSelesai}
-	for i := 0; i < 8; i++ {
-		created := now.AddDate(0, -(i / 2), -(i * 3))
-		po := model.PurchaseOrder{
-			NomorPO:       fmt.Sprintf("PO-%04d", 890+i),
-			SupplierID:    suppliers[i%len(suppliers)].ID,
-			Status:        statuses[i%len(statuses)],
-			TanggalPO:     created,
-			TotalEstimasi: int64((i + 1) * 2500000),
-			DiajukanOleh:  &adminRef,
-			CreatedAt:     created,
-			UpdatedAt:     created,
-		}
-		db.Create(&po)
-	}
-}
-
-func seedBarangMasuk(db *gorm.DB, g1, g2 model.Gudang, suppliers []model.Supplier, adminRef uint, now time.Time) {
+func seedBarangMasuk(db *gorm.DB, g1, g2 model.Gudang, adminRef uint, now time.Time) {
 	for i := 0; i < 12; i++ {
 		created := now.AddDate(0, -(i / 3), -(i * 5))
 		gid := g1.ID
@@ -197,7 +160,6 @@ func seedBarangMasuk(db *gorm.DB, g1, g2 model.Gudang, suppliers []model.Supplie
 		bm := model.BarangMasuk{
 			NomorPenerimaan: fmt.Sprintf("IN-%04d", 2340+i),
 			GudangID:        gid,
-			SupplierID:      &suppliers[i%len(suppliers)].ID,
 			Status:          constant.StatusBMSelesai,
 			Tanggal:         created,
 			Catatan:         "Data seed",
@@ -224,41 +186,6 @@ func seedBarangKeluar(db *gorm.DB, g2 model.Gudang, adminRef uint, now time.Time
 			UpdatedAt:        created,
 		}
 		db.Create(&bk)
-	}
-}
-
-func seedPengiriman(db *gorm.DB, g1, g2 model.Gudang, now time.Time) {
-	statuspg := []string{constant.StatusPGDalamPerjalanan, constant.StatusPGTerkirim, constant.StatusPGDijadwalkan, constant.StatusPGDraft}
-	tujuan := []struct {
-		nama string
-		lat  float64
-		lng  float64
-	}{
-		{"RS Hasan Sadikin, Bandung", -6.897472, 107.601444},
-		{"Cikarang Selatan, Bekasi", -6.319167, 107.153889},
-		{"Kota Bogor", -6.595038, 106.816635},
-		{"Sumedang Kota", -6.859628, 107.921478},
-	}
-	for i := 0; i < 4; i++ {
-		created := now.Add(-time.Duration(i) * time.Hour)
-		originID := g1.ID
-		if i%2 == 1 {
-			originID = g2.ID
-		}
-		pg := model.Pengiriman{
-			NomorPengiriman:  fmt.Sprintf("JX-%d", 88213+i),
-			GudangAsalID:     originID,
-			JenisPengambilan: "dropoff",
-			NamaPenerima:     tujuan[i].nama,
-			AlamatTujuan:     tujuan[i].nama,
-			NamaKurir:        []string{"Rudi Setiawan", "Ahmad Fauzi", "Wawan H.", "Sinta A."}[i],
-			TeleponKurir:     "08123456789",
-			Status:           statuspg[i],
-			TanggalKirim:     created,
-			CreatedAt:        created,
-			UpdatedAt:        created,
-		}
-		db.Create(&pg)
 	}
 }
 
@@ -289,14 +216,11 @@ func seedSampleData(db *gorm.DB, adminID uint) {
 	sat := findOrCreateSatuan(db, "Box", "bx")
 	g1 := findOrCreateGudangDenganKode(db, "Gudang 1 Cimahi", "Cimahi -7.02090991881257, 107.64954118009624", "BBU")
 	g2 := findOrCreateGudangDenganKode(db, "Gudang 2 Bandung Lt.3", "Bandung Lt.3 -6.922156836137817, 107.61645745311088", "MAHANG")
-	suppliers := seedSuppliers(db)
 	seedBarang(db, kat.ID, sat.ID)
 
 	now := time.Now()
-	seedPurchaseOrders(db, suppliers, adminID, now)
-	seedBarangMasuk(db, g1, g2, suppliers, adminID, now)
+	seedBarangMasuk(db, g1, g2, adminID, now)
 	seedBarangKeluar(db, g2, adminID, now)
-	seedPengiriman(db, g1, g2, now)
 	seedStockOpname(db, g1, now)
 
 	fmt.Println("[OK] sample data seeded")

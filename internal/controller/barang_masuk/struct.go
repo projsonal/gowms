@@ -7,29 +7,25 @@ import (
 	bmRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
 	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
-	poRepo "github.com/projsonal/gowms/internal/repositories/po"
 	"github.com/projsonal/gowms/internal/repositories/role"
-	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
 type Controller struct {
-	repo         bmRepo.Repository
-	barangRepo   barangRepo.Repository
-	gudangRepo   gudangRepo.Repository
-	poRepo       poRepo.Repository
-	supplierRepo supplierRepo.Repository
-	roleRepo     role.Repository
-	jwtSvc       *utils.JWTService
-	notifRepo    notificationRepo.Repository
+	repo       bmRepo.Repository
+	barangRepo barangRepo.Repository
+	gudangRepo gudangRepo.Repository
+	roleRepo   role.Repository
+	jwtSvc     *utils.JWTService
+	notifRepo  notificationRepo.Repository
 }
 
 func New(repo bmRepo.Repository, barangRepo barangRepo.Repository, gudangRepo gudangRepo.Repository,
-	poRepo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService,
+	roleRepo role.Repository, jwtSvc *utils.JWTService,
 	notifRepo notificationRepo.Repository) *Controller {
 	return &Controller{
 		repo: repo, barangRepo: barangRepo, gudangRepo: gudangRepo,
-		poRepo: poRepo, supplierRepo: supplierRepo, roleRepo: roleRepo, jwtSvc: jwtSvc,
+		roleRepo: roleRepo, jwtSvc: jwtSvc,
 		notifRepo: notifRepo,
 	}
 }
@@ -42,9 +38,7 @@ type ItemRequest struct {
 }
 
 type BMRequest struct {
-	PurchaseOrderID *uint `json:"purchase_order_id"`
-	SupplierID      *uint `json:"supplier_id"`
-	GudangID        uint  `json:"gudang_id" validate:"required"`
+	GudangID uint `json:"gudang_id" validate:"required"`
 	// Tanggal: SENGAJA string "YYYY-MM-DD" (bukan time.Time langsung) —
 	// form HTML <input type="date"> di frontend cuma kirim tanggal polos
 	// tanpa jam/zona waktu (mis. "2026-08-10"), sedangkan JSON unmarshal
@@ -61,10 +55,24 @@ type BMRequest struct {
 
 // parseTanggalHarian mem-parse tanggal "YYYY-MM-DD" (format bawaan
 // <input type="date">) — dipakai semua modul yang formnya punya field
-// tanggal (Barang Masuk/Keluar, Pengiriman, Purchase Order, Stock Opname)
-// supaya konsisten, alih-alih tiap modul menulis parsing sendiri-sendiri.
+// tanggal (Barang Masuk/Keluar, Stock Opname) supaya konsisten, alih-alih
+// tiap modul menulis parsing sendiri-sendiri.
 func parseTanggalHarian(raw string) (time.Time, error) {
 	return time.Parse("2006-01-02", raw)
+}
+
+// CompleteBMRequest — dikirim ke PATCH /barang-masuk/:id/selesai. Cukup
+// body kosong ({} atau tanpa body sama sekali) untuk dokumen yang semua
+// itemnya barang non-serial. Untuk item yang barangnya IsSerialized,
+// wajib disertakan baris di sini dengan SerialNumbers sejumlah persis
+// Qty item tersebut (lihat model.Barang.IsSerialized).
+type CompleteBMRequest struct {
+	Items []ItemSerialInput `json:"items"`
+}
+
+type ItemSerialInput struct {
+	BarangMasukItemID uint     `json:"barang_masuk_item_id" validate:"required"`
+	SerialNumbers     []string `json:"serial_numbers"`
 }
 
 type SummaryResponse struct {

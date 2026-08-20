@@ -14,7 +14,6 @@ import (
 	barangKeluarRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	barangMasukRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_masuk"
 	barangRusakRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_rusak"
-	purchaseOrderRepoPkg "github.com/projsonal/gowms/internal/repositories/po"
 	stockOpnameRepoPkg "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/reportexport"
@@ -120,20 +119,17 @@ func (h *Controller) buildBarangMasuk(dari, sampai *time.Time) (headers []string
 	if err != nil {
 		return nil, nil, err
 	}
-	headers = []string{"Nomor Penerimaan", "Tanggal", "Gudang", "PO Terkait", "Status", "Diterima Oleh (User ID)", "Catatan"}
+	headers = []string{"Nomor Penerimaan", "Tanggal", "Gudang", "Status", "Diterima Oleh (User ID)", "Catatan"}
 	for _, bm := range list {
 		if !inRange(bm.Tanggal, dari, sampai) {
 			continue
 		}
-		gudang, poNomor := "-", "-"
+		gudang := "-"
 		if bm.Gudang != nil {
 			gudang = bm.Gudang.Nama
 		}
-		if bm.PurchaseOrder != nil {
-			poNomor = bm.PurchaseOrder.NomorPO
-		}
 		rows = append(rows, []string{
-			bm.NomorPenerimaan, bm.Tanggal.Format(dateFormat), gudang, poNomor,
+			bm.NomorPenerimaan, bm.Tanggal.Format(dateFormat), gudang,
 			bm.Status, uintOrDash(bm.DiterimaOleh), bm.Catatan,
 		})
 	}
@@ -157,27 +153,6 @@ func (h *Controller) buildBarangKeluar(dari, sampai *time.Time) (headers []strin
 		rows = append(rows, []string{
 			bk.NomorPengeluaran, bk.Tanggal.Format(dateFormat), gudang, bk.Keperluan, bk.Penerima,
 			bk.Status, uintOrDash(bk.DikeluarkanOleh),
-		})
-	}
-	return headers, rows, nil
-}
-
-func (h *Controller) buildPurchaseOrder(dari, sampai *time.Time) (headers []string, rows [][]string, err error) {
-	list, _, err := h.poRepo.List(bigPagination(), purchaseOrderRepoPkg.Filter{})
-	if err != nil {
-		return nil, nil, err
-	}
-	headers = []string{"Nomor PO", "Tanggal PO", "Supplier", "Status", "Total Estimasi"}
-	for _, po := range list {
-		if !inRange(po.TanggalPO, dari, sampai) {
-			continue
-		}
-		supplier := "-"
-		if po.Supplier != nil {
-			supplier = po.Supplier.Nama
-		}
-		rows = append(rows, []string{
-			po.NomorPO, po.TanggalPO.Format(dateFormat), supplier, po.Status, formatRupiah(po.TotalEstimasi),
 		})
 	}
 	return headers, rows, nil
@@ -208,7 +183,6 @@ var reportTitles = map[string]string{
 	constant.LaporanStokBarang:   "Laporan Stok Barang",
 	constant.LaporanBarangMasuk:  "Laporan Barang Masuk",
 	constant.LaporanBarangKeluar: "Laporan Barang Keluar",
-	constant.LaporanPO:           "Laporan Purchase Order",
 	constant.LaporanStokOpname:   "Laporan Stock Opname",
 	constant.LaporanBarangRetur:  "Laporan Barang Retur",
 }
@@ -226,8 +200,6 @@ func (h *Controller) buildReport(tipe string, dari, sampai *time.Time) (title st
 		headers, rows, err = h.buildBarangMasuk(dari, sampai)
 	case constant.LaporanBarangKeluar:
 		headers, rows, err = h.buildBarangKeluar(dari, sampai)
-	case constant.LaporanPO:
-		headers, rows, err = h.buildPurchaseOrder(dari, sampai)
 	case constant.LaporanStokOpname:
 		headers, rows, err = h.buildStockOpname(dari, sampai)
 	case constant.LaporanBarangRetur:

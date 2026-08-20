@@ -25,6 +25,19 @@ type Barang struct {
 	IsProtected bool   `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin — lihat internal/controller/barang Protect()
 	Deskripsi   string `json:"deskripsi" gorm:"size:255"`
 
+	// IsSerialized: true kalau unit fisik barang ini WAJIB dibedakan lewat
+	// nomor seri (SN) — umum di gudang ISP: dua ONT/modem dengan
+	// KodeBarang (SKU) yang SAMA tapi unit fisiknya beda (mis. MAC
+	// address / SN produsen beda-beda), jadi tidak bisa dianggap
+	// "identik" begitu saja seperti stok barang biasa (kabel per meter,
+	// baut, dst). Kalau true: Barang Masuk/Keluar untuk barang ini WAJIB
+	// menyertakan daftar SN sejumlah Qty saat diselesaikan (lihat
+	// model.BarangSerial & internal/controller/barang_masuk|barang_keluar
+	// Complete()). Stok agregat (field Stok di atas) TETAP dipakai
+	// sebagai angka ringkas, BarangSerial adalah rincian per-unitnya —
+	// keduanya harus selalu sinkron (dijaga lewat validasi di Complete()).
+	IsSerialized bool `json:"is_serialized" gorm:"not null;default:false"`
+
 	// --- Alur persetujuan (khusus barang yang DIBUAT role admin) ---
 	// super_admin membuat barang -> langsung "disetujui" (default).
 	// admin membuat barang       -> otomatis "menunggu" sampai super_admin

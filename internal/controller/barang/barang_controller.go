@@ -155,16 +155,17 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	}
 
 	b := &model.Barang{
-		KodeBarang:  req.KodeBarang,
-		Nama:        req.Nama,
-		KategoriID:  req.KategoriID,
-		SatuanID:    req.SatuanID,
-		HargaBeli:   req.HargaBeli,
-		Stok:        req.Stok,
-		StokMinimum: req.StokMinimum,
-		BeratGram:   req.BeratGram,
-		IsActive:    true,
-		Deskripsi:   req.Deskripsi,
+		KodeBarang:   req.KodeBarang,
+		Nama:         req.Nama,
+		KategoriID:   req.KategoriID,
+		SatuanID:     req.SatuanID,
+		HargaBeli:    req.HargaBeli,
+		Stok:         req.Stok,
+		StokMinimum:  req.StokMinimum,
+		BeratGram:    req.BeratGram,
+		IsActive:     true,
+		IsSerialized: req.IsSerialized,
+		Deskripsi:    req.Deskripsi,
 	}
 
 	// --- Alur persetujuan (lihat model.Barang.ApprovalStatus) ---

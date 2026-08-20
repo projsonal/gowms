@@ -78,7 +78,7 @@ func (h *Controller) Version(c *fiber.Ctx) error {
 	return utils.OK(c, "versi aplikasi berhasil diambil", VersionResponse{
 		Version:     CurrentVersion,
 		AppName:     "WMS - RSD",
-		Description: "WMS-RSD merupakan pelayanan gudang serta inventaris produk dalam perusahaan — mengelola stok, pengiriman, aset gudang (tiang/ODC/ONT/ODP/OLT/transportasi), hingga laporan operasional dalam satu sistem.",
+		Description: "WMS-RSD merupakan pelayanan gudang serta inventaris produk dalam perusahaan — mengelola stok, barang masuk/keluar, aset gudang (tiang/ODC/ONT/ODP/OLT/transportasi) beserta tracking-nya, hingga laporan operasional dalam satu sistem.",
 		Developer:   "Tim Internal RSD",
 	})
 }
@@ -89,20 +89,13 @@ func (h *Controller) Changelog(c *fiber.Ctx) error {
 
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/app")
-	// Publik (tidak butuh login) — cuma menampilkan info aplikasi, tidak
-	// ada data sensitif.
 	g.Get("/version", h.Version)
 	g.Get("/changelog", h.Changelog)
 
-	// Cek/Update — WAJIB login (beda dari /version & /changelog di atas):
-	// CheckUpdate & UpdateStatus murni baca, boleh role apa saja yang
-	// sudah login; TriggerUpdate KHUSUS super_admin karena efeknya besar
-	// (menyalakan Mode Pemeliharaan otomatis & me-restart proses backend
-	// lewat skrip deploy — lihat update_controller.go).
-	loggedIn := middleware.JWTAuth(h.jwtSvc)
-	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
-
-	g.Get("/check-update", loggedIn, h.CheckUpdate)
-	g.Get("/update-status", loggedIn, h.UpdateStatus)
-	g.Post("/update", loggedIn, onlySuperAdmin, h.TriggerUpdate)
+	// Cek Update/Update Sekarang (Settings > Sistem) — wajib login;
+	// TriggerUpdate (POST /app/update) khusus super_admin karena
+	// benar-benar mengganti binary yang sedang berjalan di server.
+	g.Get("/check-update", middleware.JWTAuth(h.jwtSvc), h.CheckUpdate)
+	g.Get("/update-status", middleware.JWTAuth(h.jwtSvc), h.UpdateStatus)
+	g.Post("/update", middleware.JWTAuth(h.jwtSvc), middleware.RequireRole(constant.RoleSuperAdmin), h.TriggerUpdate)
 }

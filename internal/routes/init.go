@@ -13,20 +13,17 @@ import (
 	barangKeluarController "github.com/projsonal/gowms/internal/controller/barang_keluar"
 	barangMasukController "github.com/projsonal/gowms/internal/controller/barang_masuk"
 	barangRusakController "github.com/projsonal/gowms/internal/controller/barang_rusak"
+	barangSerialController "github.com/projsonal/gowms/internal/controller/barang_serial"
 	captchaController "github.com/projsonal/gowms/internal/controller/captcha"
-	codController "github.com/projsonal/gowms/internal/controller/cod"
 	dashboardController "github.com/projsonal/gowms/internal/controller/dashboard"
 	gudangController "github.com/projsonal/gowms/internal/controller/gudang"
 	humanCheckController "github.com/projsonal/gowms/internal/controller/humancheck"
 	laporanController "github.com/projsonal/gowms/internal/controller/laporan"
 	maintenanceController "github.com/projsonal/gowms/internal/controller/maintenance"
 	notificationController "github.com/projsonal/gowms/internal/controller/notification"
-	pengirimanController "github.com/projsonal/gowms/internal/controller/pengiriman"
-	purchaseOrderController "github.com/projsonal/gowms/internal/controller/po"
 	roleController "github.com/projsonal/gowms/internal/controller/role"
 	securityController "github.com/projsonal/gowms/internal/controller/security"
 	stockOpnameController "github.com/projsonal/gowms/internal/controller/stockOpname"
-	supplierController "github.com/projsonal/gowms/internal/controller/supplier"
 	taskController "github.com/projsonal/gowms/internal/controller/task"
 	trashController "github.com/projsonal/gowms/internal/controller/trash"
 	usersController "github.com/projsonal/gowms/internal/controller/users"
@@ -39,15 +36,12 @@ import (
 	barangKeluarRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	barangMasukRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
 	barangRusakRepo "github.com/projsonal/gowms/internal/repositories/barang_rusak"
-	codRepo "github.com/projsonal/gowms/internal/repositories/cod"
+	barangSerialRepo "github.com/projsonal/gowms/internal/repositories/barang_serial"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
 	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
 	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
-	pengirimanRepo "github.com/projsonal/gowms/internal/repositories/pengiriman"
-	purchaseOrderRepo "github.com/projsonal/gowms/internal/repositories/po"
 	roleRepo "github.com/projsonal/gowms/internal/repositories/role"
 	stockOpnameRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
-	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
 	taskRepo "github.com/projsonal/gowms/internal/repositories/task"
 	usersRepo "github.com/projsonal/gowms/internal/repositories/users"
 	"github.com/projsonal/gowms/pkg/botcheck"
@@ -70,23 +64,20 @@ type Dependencies struct {
 	UserController *usersController.Controller
 	RoleController *roleController.Controller
 
-	GudangController   *gudangController.Controller
-	BarangController   *barangController.Controller
-	SupplierController *supplierController.Controller
+	GudangController *gudangController.Controller
+	BarangController *barangController.Controller
 
-	PurchaseOrderController *purchaseOrderController.Controller
-	BarangMasukController   *barangMasukController.Controller
-	BarangKeluarController  *barangKeluarController.Controller
-	StockOpnameController   *stockOpnameController.Controller
-	PengirimanController    *pengirimanController.Controller
-	CodController           *codController.Controller
-	AssetController         *assetController.Controller
-	BarangRusakController   *barangRusakController.Controller
-	TaskController          *taskController.Controller
-	AppInfoController       *appinfoController.Controller
-	TrashController         *trashController.Controller
-	NotificationController  *notificationController.Controller
-	NotificationRepo        notificationRepo.Repository
+	BarangMasukController  *barangMasukController.Controller
+	BarangKeluarController *barangKeluarController.Controller
+	BarangSerialController *barangSerialController.Controller
+	StockOpnameController  *stockOpnameController.Controller
+	AssetController        *assetController.Controller
+	BarangRusakController  *barangRusakController.Controller
+	TaskController         *taskController.Controller
+	AppInfoController      *appinfoController.Controller
+	TrashController        *trashController.Controller
+	NotificationController *notificationController.Controller
+	NotificationRepo       notificationRepo.Repository
 
 	LaporanController   *laporanController.Controller
 	DashboardController *dashboardController.Controller
@@ -111,13 +102,10 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	rAuth := authRepo.New(db)
 	rGudang := gudangRepo.New(db)
 	rBarang := barangRepo.New(db)
-	rSupplier := supplierRepo.New(db)
-	rPO := purchaseOrderRepo.New(db)
-	rBarangMasuk := barangMasukRepo.New(db, rPO)
+	rBarangMasuk := barangMasukRepo.New(db)
 	rBarangKeluar := barangKeluarRepo.New(db)
+	rBarangSerial := barangSerialRepo.New(db)
 	rStockOpname := stockOpnameRepo.New(db)
-	rPengiriman := pengirimanRepo.New(db)
-	rCod := codRepo.New(db)
 	rAsset := assetRepo.New(db)
 	rAssetPort := assetPortRepo.New(db)
 	rAssetHistory := assetHistoryRepo.New(db)
@@ -157,18 +145,15 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	cRole := roleController.New(rRole, jwtSvc)
 	cGudang := gudangController.New(rGudang, rRole, jwtSvc)
 	cBarang := barangController.New(rBarang, rGudang, rRole, jwtSvc)
-	cSupplier := supplierController.New(rSupplier, rRole, jwtSvc)
-	cPO := purchaseOrderController.New(rPO, rSupplier, rRole, jwtSvc, rNotification)
-	cBarangMasuk := barangMasukController.New(rBarangMasuk, rBarang, rGudang, rPO, rSupplier, rRole, jwtSvc, rNotification)
+	cBarangMasuk := barangMasukController.New(rBarangMasuk, rBarang, rGudang, rRole, jwtSvc, rNotification)
 	cBarangKeluar := barangKeluarController.New(rBarangKeluar, rBarang, rGudang, rRole, jwtSvc, rNotification)
+	cBarangSerial := barangSerialController.New(rBarangSerial, rBarang, rRole, jwtSvc)
 	cStockOpname := stockOpnameController.New(rStockOpname, rBarang, rGudang, rRole, jwtSvc, rNotification)
-	cPengiriman := pengirimanController.New(rPengiriman, rGudang, rBarangKeluar, rRole, jwtSvc, rNotification)
-	cCod := codController.New(rCod, rRole, jwtSvc)
 	cAsset := assetController.New(rAsset, rGudang, rAssetPort, rAssetHistory, rUsers, rRole, jwtSvc, rNotification)
 	cBarangRusak := barangRusakController.New(rBarangRusak, rBarang, rRole, jwtSvc, cfg.Storage.Path, rNotification)
 	cTask := taskController.New(rTask, rRole, jwtSvc)
-	cLaporan := laporanController.New(rBarang, rPO, rBarangMasuk, rBarangKeluar, rStockOpname, rBarangRusak, rRole, jwtSvc)
-	cDashboard := dashboardController.New(rBarang, rGudang, rSupplier, rPO, rBarangMasuk, rBarangKeluar, rStockOpname, rPengiriman, rRole, jwtSvc, db)
+	cLaporan := laporanController.New(rBarang, rBarangMasuk, rBarangKeluar, rStockOpname, rBarangRusak, rRole, jwtSvc)
+	cDashboard := dashboardController.New(rBarang, rGudang, rBarangMasuk, rBarangKeluar, rStockOpname, rRole, jwtSvc, db)
 	cCaptcha := captchaController.New(captchaSvc)
 	cHumanCheck := humanCheckController.New(humanCheckSvc)
 	cSecurity := securityController.New(botCheckSvc, captchaSvc)
@@ -176,38 +161,35 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	cHealth := health.NewController(health.NewChecker(db, cfg.Storage.Path))
 
 	return &Dependencies{
-		Cfg:                     cfg,
-		JWTSvc:                  jwtSvc,
-		RoleRepo:                rRole,
-		GudangRepo:              rGudang,
-		MaintenanceRepo:         rMaintenance,
-		AuthController:          cAuth,
-		UserController:          cUsers,
-		RoleController:          cRole,
-		GudangController:        cGudang,
-		BarangController:        cBarang,
-		SupplierController:      cSupplier,
-		PurchaseOrderController: cPO,
-		BarangMasukController:   cBarangMasuk,
-		BarangKeluarController:  cBarangKeluar,
-		StockOpnameController:   cStockOpname,
-		PengirimanController:    cPengiriman,
-		CodController:           cCod,
-		AssetController:         cAsset,
-		BarangRusakController:   cBarangRusak,
-		TaskController:          cTask,
-		AppInfoController:       appinfoController.New(cfg, jwtSvc, rMaintenance, rNotification),
-		TrashController:         trashController.New(db, jwtSvc),
-		NotificationController:  notificationController.New(rNotification, jwtSvc),
-		NotificationRepo:        rNotification,
-		LaporanController:       cLaporan,
-		DashboardController:     cDashboard,
-		CaptchaController:       cCaptcha,
-		HumanCheckController:    cHumanCheck,
-		SecurityController:      cSecurity,
-		MaintenanceController:   cMaintenance,
-		BotCheckSvc:             botCheckSvc,
-		HealthController:        cHealth,
+		Cfg:                    cfg,
+		JWTSvc:                 jwtSvc,
+		RoleRepo:               rRole,
+		GudangRepo:             rGudang,
+		MaintenanceRepo:        rMaintenance,
+		AuthController:         cAuth,
+		UserController:         cUsers,
+		RoleController:         cRole,
+		GudangController:       cGudang,
+		BarangController:       cBarang,
+		BarangMasukController:  cBarangMasuk,
+		BarangKeluarController: cBarangKeluar,
+		BarangSerialController: cBarangSerial,
+		StockOpnameController:  cStockOpname,
+		AssetController:        cAsset,
+		BarangRusakController:  cBarangRusak,
+		TaskController:         cTask,
+		AppInfoController:      appinfoController.New(cfg, jwtSvc, rMaintenance, rNotification),
+		TrashController:        trashController.New(db, jwtSvc),
+		NotificationController: notificationController.New(rNotification, jwtSvc),
+		NotificationRepo:       rNotification,
+		LaporanController:      cLaporan,
+		DashboardController:    cDashboard,
+		CaptchaController:      cCaptcha,
+		HumanCheckController:   cHumanCheck,
+		SecurityController:     cSecurity,
+		MaintenanceController:  cMaintenance,
+		BotCheckSvc:            botCheckSvc,
+		HealthController:       cHealth,
 	}
 }
 

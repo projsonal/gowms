@@ -129,41 +129,17 @@ type SwaggerConfig struct {
 	BasicAuthPass string
 }
 
-// SelfUpdateConfig — konfigurasi fitur "Cek Update"/"Update Sekarang" di
-// Settings > Sistem (lihat internal/controller/appinfo/update_controller.go
-// & docs/self-update-setup.md untuk alur lengkapnya).
+// SelfUpdateConfig — env AUTO_UPDATE_* (lihat docs/self-update-setup.md).
+// Selama Enabled=false, GET /app/check-update & GET /app/update-status
+// tetap jalan normal (murni baca); hanya POST /app/update yang ditolak.
 type SelfUpdateConfig struct {
-	// Enabled: false berarti CheckUpdate/UpdateStatus tetap bisa dipanggil
-	// (murni baca), TAPI TriggerUpdate ditolak — dipisah dari GitHubOwner/
-	// Repo kosong supaya admin bisa sengaja mengaktifkan "sudah tahu ada
-	// update baru" tanpa otomatis mengizinkan siapa pun menekan "Update
-	// Sekarang" sebelum server ini benar-benar disiapkan (skrip deploy +
-	// sudoers systemctl, lihat docs/self-update-setup.md).
-	Enabled bool
-	// GitHubOwner/GitHubRepo: repo publik tempat rilis (GitHub Releases,
-	// bukan sekadar tag) dipublikasikan — lihat workflows/backend-release.yml
-	// yang membuat rilis otomatis setiap tag "v*" di-push.
+	Enabled     bool
 	GitHubOwner string
 	GitHubRepo  string
-	// ScriptPath: path ke skrip yang benar-benar melakukan swap binary +
-	// restart systemd (deploy/scripts/self-update.sh secara default).
-	ScriptPath string
-	// WorkDir: direktori kerja skrip deploy DAN direktori tempat binary
-	// backend yang sedang berjalan berada (mis. /opt/gowms/backend) —
-	// HARUS sama dengan WorkingDirectory unit systemd supaya StatusPath
-	// relatif tetap mengarah ke file yang sama sebelum & sesudah restart.
-	WorkDir string
-	// ServiceName: nama unit systemd yang di-restart skrip setelah binary
-	// baru terpasang (lihat deploy/scripts/self-update.sh & workflows/
-	// backend-deploy.yml yang memakai nama unit yang sama).
+	ScriptPath  string
+	WorkDir     string
 	ServiceName string
-	// StatusPath: file JSON tempat status proses update TERAKHIR
-	// dipersist — dibaca UpdateStatus, ditulis TriggerUpdate (state
-	// running) lalu deploy/scripts/self-update.sh (state success/failed).
-	// Default relatif terhadap WorkDir/cwd proses backend, SENGAJA bukan
-	// /tmp supaya tidak hilang kalau /tmp di-clear reboot sebelum proses
-	// baru sempat membaca status "success/failed" yang belum di-acknowledge.
-	StatusPath string
+	StatusPath  string
 }
 
 func Load() *Config {
@@ -249,7 +225,7 @@ func Load() *Config {
 			GitHubOwner: getEnv("AUTO_UPDATE_GITHUB_OWNER", "projsonal"),
 			GitHubRepo:  getEnv("AUTO_UPDATE_GITHUB_REPO", "gowms"),
 			ScriptPath:  getEnv("AUTO_UPDATE_SCRIPT_PATH", "./deploy/scripts/self-update.sh"),
-			WorkDir:     getEnv("AUTO_UPDATE_WORKDIR", "/opt/gowms/backend"),
+			WorkDir:     getEnv("AUTO_UPDATE_WORKDIR", "."),
 			ServiceName: getEnv("AUTO_UPDATE_SERVICE_NAME", "gowms-backend"),
 			StatusPath:  getEnv("AUTO_UPDATE_STATUS_PATH", "./var/run/self-update-status.json"),
 		},

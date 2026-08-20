@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/projsonal/gowms/internal/model"
+	barangSerial "github.com/projsonal/gowms/internal/repositories/barang_serial"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -39,7 +40,9 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangKel
 	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := p.Apply(q.Session(&gorm.Session{}).Preload("Gudang").Order("id desc")).Find(&list).Error; err != nil {
+	if err := p.Apply(q.Session(&gorm.Session{}).
+		Preload("Gudang").Preload("Items").Preload("Items.Barang").Order("id desc")).
+		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
 	return list, total, nil
@@ -93,7 +96,7 @@ func (r *repository) Delete(id uint) error {
 	})
 }
 
-func (r *repository) Complete(id uint, userID uint) (*model.BarangKeluar, error) {
+func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (*model.BarangKeluar, error) {
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var bk model.BarangKeluar
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Preload("Items").First(&bk, id).Error; err != nil {
@@ -107,11 +110,13 @@ func (r *repository) Complete(id uint, userID uint) (*model.BarangKeluar, error)
 		// mengubah apa pun — supaya dokumen dengan satu baris saja yang
 		// kurang stok tidak menyebabkan sebagian barang lain terlanjur
 		// terpotong (all-or-nothing).
+		barangByID := make(map[uint]model.Barang, len(bk.Items))
 		for _, item := range bk.Items {
 			var b model.Barang
 			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&b, item.BarangID).Error; err != nil {
 				return err
 			}
+			barangByID[item.BarangID] = b
 			if b.Stok < item.Qty {
 				return fmt.Errorf("%s (barang: %s, tersedia: %d, diminta: %d)",
 					constant.ErrBKStokTidakCukup, b.Nama, b.Stok, item.Qty)
@@ -126,9 +131,25 @@ func (r *repository) Complete(id uint, userID uint) (*model.BarangKeluar, error)
 						constant.ErrBKRakTidakCukup, rak.KodeRak, rak.Terisi, item.Qty)
 				}
 			}
+			// Barang IsSerialized: qty di sini HARUS dipenuhi lewat SN
+			// spesifik yang dipilih operator (bukan cuma angka), supaya
+			// unit fisik mana yang keluar tercatat jelas — lihat
+			// model.BarangSerial & barangSerial.ConsumeUnitsTx.
+			if b.IsSerialized {
+				sn := serials[item.ID]
+				if len(sn) != item.Qty {
+					return fmt.Errorf("%s (barang: %s, qty: %d, sn dipilih: %d)",
+						constant.ErrSerialJumlahTidakSesuai, b.Nama, item.Qty, len(sn))
+				}
+			}
 		}
 
 		for _, item := range bk.Items {
+			if barangByID[item.BarangID].IsSerialized {
+				if err := barangSerial.ConsumeUnitsTx(tx, item.BarangID, bk.GudangID, item.ID, serials[item.ID]); err != nil {
+					return err
+				}
+			}
 			if err := tx.Model(&model.Barang{}).Where("id = ?", item.BarangID).
 				Update("stok", gorm.Expr("stok - ?", item.Qty)).Error; err != nil {
 				return err

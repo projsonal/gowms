@@ -33,8 +33,10 @@ type BarangRequest struct {
 	Stok        int `json:"stok" validate:"min=0"`
 	StokMinimum int `json:"stok_minimum" validate:"min=0"`
 	// BeratGram: opsional, lihat dokumentasi field di model/barang.go.
-	BeratGram *int   `json:"berat_gram" validate:"omitempty,min=0"`
-	Deskripsi string `json:"deskripsi" validate:"max=255"`
+	BeratGram *int `json:"berat_gram" validate:"omitempty,min=0"`
+	// IsSerialized: lihat dokumentasi lengkap di model.Barang.IsSerialized.
+	IsSerialized bool   `json:"is_serialized"`
+	Deskripsi    string `json:"deskripsi" validate:"max=255"`
 }
 
 // AdjustStokRequest — dipakai modul lain (Barang Masuk/Keluar/Stock Opname)

@@ -1,8 +1,6 @@
-package barang_masuk
+package barang_serial
 
-import (
-	"gorm.io/gorm"
-)
+import "gorm.io/gorm"
 
 type repository struct {
 	db *gorm.DB

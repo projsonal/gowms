@@ -46,6 +46,20 @@ func parseTanggalHarian(raw string) (time.Time, error) {
 	return time.Parse("2006-01-02", raw)
 }
 
+// CompleteBKRequest — dikirim ke PATCH /barang-keluar/:id/selesai.
+// Sama pola & alasannya dengan CompleteBMRequest di paket
+// internal/controller/barang_masuk — lihat komentar di sana. Bedanya di
+// sini SN yang diisi harus SUDAH TERDAFTAR (dipilih dari yang berstatus
+// tersedia di gudang asal), bukan SN baru.
+type CompleteBKRequest struct {
+	Items []ItemSerialInput `json:"items"`
+}
+
+type ItemSerialInput struct {
+	BarangKeluarItemID uint     `json:"barang_keluar_item_id" validate:"required"`
+	SerialNumbers      []string `json:"serial_numbers"`
+}
+
 type SummaryResponse struct {
 	TotalDokumen int64 `json:"total_dokumen"`
 	Draft        int64 `json:"draft"`

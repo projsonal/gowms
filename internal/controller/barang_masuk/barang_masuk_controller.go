@@ -33,58 +33,25 @@ func generateNomorBM() string {
 }
 
 func (h *Controller) validateItems(req BMRequest) error {
-	po, err := h.validatePurchaseOrder(req.PurchaseOrderID)
-	if err != nil {
-		return err
-	}
-	return h.validateItemRequests(req.Items, po)
+	return h.validateItemRequests(req.Items)
 }
 
-func (h *Controller) validatePurchaseOrder(poID *uint) (*model.PurchaseOrder, error) {
-	if poID == nil {
-		return nil, nil
-	}
-	po, err := h.poRepo.FindByID(*poID)
-	if err != nil {
-		return nil, errors.New("purchase order tidak ditemukan")
-	}
-	if po.Status != constant.StatusPODisetujui {
-		return nil, errors.New(constant.ErrPOTidakDisetujui)
-	}
-	return po, nil
-}
-
-func (h *Controller) validateItemRequests(items []ItemRequest, po *model.PurchaseOrder) error {
+func (h *Controller) validateItemRequests(items []ItemRequest) error {
 	for _, it := range items {
-		if err := h.validateItem(it, po); err != nil {
+		if err := h.validateItem(it); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (h *Controller) validateItem(it ItemRequest, po *model.PurchaseOrder) error {
+func (h *Controller) validateItem(it ItemRequest) error {
 	if _, err := h.barangRepo.FindByID(it.BarangID); err != nil {
 		return fmt.Errorf("barang id %d tidak ditemukan", it.BarangID)
 	}
 	if it.RakID != nil {
 		if _, err := h.gudangRepo.FindRakByID(*it.RakID); err != nil {
 			return fmt.Errorf("rak id %d tidak ditemukan", *it.RakID)
-		}
-	}
-	if po != nil {
-		if err := h.validateItemQtyForPO(it, po); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (h *Controller) validateItemQtyForPO(it ItemRequest, po *model.PurchaseOrder) error {
-	for _, poItem := range po.Items {
-		if poItem.BarangID == it.BarangID && it.Qty > poItem.SisaDiterima() {
-			return fmt.Errorf("qty barang id %d melebihi sisa yang belum diterima pada PO (sisa: %d)",
-				it.BarangID, poItem.SisaDiterima())
 		}
 	}
 	return nil
@@ -104,13 +71,11 @@ func toItemModels(items []ItemRequest) []model.BarangMasukItem {
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
-	poID, _ := strconv.ParseUint(c.Query("purchase_order_id", "0"), 10, 64)
 	kategoriID, _ := strconv.ParseUint(c.Query("kategori_id", "0"), 10, 64)
 	f := bmRepo.Filter{
-		Status:          c.Query("status", ""),
-		GudangID:        uint(gudangID),
-		PurchaseOrderID: uint(poID),
-		KategoriID:      uint(kategoriID),
+		Status:     c.Query("status", ""),
+		GudangID:   uint(gudangID),
+		KategoriID: uint(kategoriID),
 	}
 
 	list, total, err := h.repo.List(p, f)
@@ -153,8 +118,6 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 
 	bm := &model.BarangMasuk{
 		NomorPenerimaan: generateNomorBM(),
-		PurchaseOrderID: req.PurchaseOrderID,
-		SupplierID:      req.SupplierID,
 		GudangID:        req.GudangID,
 		Status:          constant.StatusBMDraft,
 		Tanggal:         tanggal,
@@ -208,8 +171,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusBadRequest, err.Error(), nil)
 	}
 
-	bm.PurchaseOrderID = req.PurchaseOrderID
-	bm.SupplierID = req.SupplierID
 	bm.GudangID = req.GudangID
 	bm.Tanggal = tanggal
 	bm.Catatan = req.Catatan
@@ -241,7 +202,18 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	}
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 
-	bm, err := h.repo.Complete(id, userID)
+	// Body OPSIONAL — dokumen tanpa barang serial tidak perlu kirim apa
+	// pun. Kalau body dikirim tapi tidak valid JSON, abaikan saja (bukan
+	// kegagalan fatal); validasi SEBENARNYA (jumlah SN vs Qty) tetap
+	// dilakukan di repo.Complete().
+	var req CompleteBMRequest
+	_ = c.BodyParser(&req)
+	serials := make(map[uint][]string, len(req.Items))
+	for _, it := range req.Items {
+		serials[it.BarangMasukItemID] = it.SerialNumbers
+	}
+
+	bm, err := h.repo.Complete(id, userID, serials)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}

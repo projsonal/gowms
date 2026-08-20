@@ -2,11 +2,13 @@ package barang_masuk
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/projsonal/gowms/internal/model"
+	barangSerial "github.com/projsonal/gowms/internal/repositories/barang_serial"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -17,9 +19,6 @@ func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
 	}
 	if f.GudangID != 0 {
 		q = q.Where(constant.QueryGudangIDEq, f.GudangID)
-	}
-	if f.PurchaseOrderID != 0 {
-		q = q.Where("purchase_order_id = ?", f.PurchaseOrderID)
 	}
 	if f.KategoriID != 0 {
 		// Dokumen barang masuk bisa berisi beberapa item; JOIN + DISTINCT
@@ -46,7 +45,8 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangMas
 	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if err := p.Apply(q.Session(&gorm.Session{}).Preload("Gudang").Preload("Supplier").Preload("PurchaseOrder").Order("id desc")).
+	if err := p.Apply(q.Session(&gorm.Session{}).
+		Preload("Gudang").Preload("Items").Preload("Items.Barang").Order("id desc")).
 		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
@@ -55,7 +55,7 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangMas
 
 func (r *repository) FindByID(id uint) (*model.BarangMasuk, error) {
 	var bm model.BarangMasuk
-	err := r.db.Preload("Gudang").Preload("Supplier").Preload("PurchaseOrder").
+	err := r.db.Preload("Gudang").
 		Preload("Items").Preload("Items.Barang").Preload("Items.Rak").
 		First(&bm, id).Error
 	if err != nil {
@@ -103,7 +103,7 @@ func (r *repository) Delete(id uint) error {
 	})
 }
 
-func (r *repository) Complete(id uint, userID uint) (*model.BarangMasuk, error) {
+func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (*model.BarangMasuk, error) {
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var bm model.BarangMasuk
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Preload("Items").First(&bm, id).Error; err != nil {
@@ -114,17 +114,30 @@ func (r *repository) Complete(id uint, userID uint) (*model.BarangMasuk, error) 
 		}
 
 		for _, item := range bm.Items {
+			var b model.Barang
+			if err := tx.First(&b, item.BarangID).Error; err != nil {
+				return err
+			}
+			// Barang bertanda IsSerialized WAJIB disertai SN sejumlah
+			// persis Qty saat diselesaikan — inilah titik masuk data unit
+			// fisik (lihat barang_serial.CreateUnitsTx & model.BarangSerial).
+			if b.IsSerialized {
+				sn := serials[item.ID]
+				if len(sn) != item.Qty {
+					return fmt.Errorf("%s (barang: %s, qty: %d, sn diisi: %d)",
+						constant.ErrSerialJumlahTidakSesuai, b.Nama, item.Qty, len(sn))
+				}
+				if err := barangSerial.CreateUnitsTx(tx, item.BarangID, bm.GudangID, item.RakID, item.ID, sn); err != nil {
+					return err
+				}
+			}
+
 			if err := tx.Model(&model.Barang{}).Where("id = ?", item.BarangID).
 				Update("stok", gorm.Expr("stok + ?", item.Qty)).Error; err != nil {
 				return err
 			}
 			if item.RakID != nil {
 				if err := adjustRak(tx, *item.RakID, item.Qty); err != nil {
-					return err
-				}
-			}
-			if bm.PurchaseOrderID != nil && r.poRepo != nil {
-				if err := r.poRepo.TambahPenerimaan(tx, *bm.PurchaseOrderID, item.BarangID, item.Qty); err != nil {
 					return err
 				}
 			}

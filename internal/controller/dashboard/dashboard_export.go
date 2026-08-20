@@ -51,15 +51,6 @@ func (h *Controller) ReportExport(c *fiber.Ctx) error {
 		         COALESCE((SELECT COUNT(*) FROM barang_keluar_items WHERE barang_keluar_id = bk.id), 0) AS qty
 		         FROM barang_keluar bk LEFT JOIN gudangs g ON g.id = bk.gudang_id
 		         WHERE bk.tanggal BETWEEN ? AND ? ORDER BY bk.tanggal DESC`, from, to).Scan(&rows)
-	case "po":
-		db.Raw(`SELECT po.nomor_po AS nomor, po.tanggal_po AS tanggal, COALESCE(s.nama, '-') AS info, po.status, po.total_estimasi AS qty
-		         FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
-		         WHERE po.tanggal_po BETWEEN ? AND ? ORDER BY po.tanggal_po DESC`, from, to).Scan(&rows)
-	case "pengiriman":
-		db.Raw(`SELECT pg.nomor_pengiriman AS nomor, pg.tanggal_kirim AS tanggal,
-		         COALESCE(pg.nama_kurir, '-') || ' - ' || COALESCE(pg.alamat_tujuan, '-') AS info,
-		         pg.status, 0 AS qty
-		         FROM pengiriman pg WHERE pg.tanggal_kirim BETWEEN ? AND ? ORDER BY pg.tanggal_kirim DESC`, from, to).Scan(&rows)
 	case "stock-opname":
 		db.Raw(`SELECT so.nomor_opname AS nomor, so.tanggal, COALESCE(g.nama, '-') AS info, so.status, 0 AS qty
 		         FROM stock_opnames so LEFT JOIN gudangs g ON g.id = so.gudang_id
@@ -146,8 +137,6 @@ func prettyTitle(jenis string) string {
 	titles := map[string]string{
 		"barang-masuk":  "Laporan Barang Masuk",
 		"barang-keluar": "Laporan Barang Keluar",
-		"po":            "Laporan Purchase Order",
-		"pengiriman":    "Laporan Pengiriman",
 		"stock-opname":  "Laporan Stock Opname",
 		"stok":          "Laporan Stok",
 	}

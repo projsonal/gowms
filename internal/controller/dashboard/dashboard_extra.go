@@ -72,12 +72,6 @@ func (h *Controller) Activity(c *fiber.Ctx) error {
 	  SELECT 'bk-' || bk.id::text, COALESCE(u.full_name, u.username, 'System'), bk.nomor_pengeluaran, 'out', bk.created_at
 	  FROM barang_keluar bk LEFT JOIN users u ON u.id = bk.dikeluarkan_oleh
 	  UNION ALL
-	  SELECT 'po-' || po.id::text, COALESCE(u.full_name, u.username, 'System'), po.nomor_po, 'po', po.created_at
-	  FROM purchase_orders po LEFT JOIN users u ON u.id = po.diajukan_oleh
-	  UNION ALL
-	  SELECT 'pg-' || pg.id::text, 'System', pg.nomor_pengiriman, 'ship', pg.created_at
-	  FROM pengiriman pg
-	  UNION ALL
 	  SELECT 'so-' || so.id::text, 'System', so.nomor_opname, 'opname', so.created_at
 	  FROM stock_opname so
 	  ORDER BY created_at DESC LIMIT 15
@@ -91,8 +85,6 @@ func (h *Controller) Activity(c *fiber.Ctx) error {
 		verb := map[string]string{
 			"in":     "menambahkan Barang Masuk",
 			"out":    "mencatat Barang Keluar",
-			"po":     "membuat Purchase Order",
-			"ship":   "membuat Pengiriman",
 			"opname": "melakukan Stock Opname",
 		}[r.Type]
 		out = append(out, ActivityItem{
@@ -127,11 +119,10 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	var rows []row
 	args := []any{}
 	if !since.IsZero() {
-		// 6 placeholder `?` yang dihasilkan optAnd/optWhere untuk blok
-		// barang_masuk, barang_keluar, pengiriman, purchase_orders,
-		// stock_opname, dan assets di bawah — urutannya harus sama
-		// dengan urutan blok UNION ALL pada query `q`.
-		args = append(args, since, since, since, since, since, since)
+		// 4 placeholder `?` yang dihasilkan optAnd/optWhere untuk blok
+		// barang_masuk, barang_keluar, stock_opname, dan assets di bawah —
+		// urutannya harus sama dengan urutan blok UNION ALL pada query `q`.
+		args = append(args, since, since, since, since)
 	}
 	// Untuk barang_masuk & barang_keluar, karyawan HANYA perlu diberi tahu
 	// saat statusnya sudah "selesai" (disetujui admin/super_admin lewat
@@ -148,12 +139,6 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	  SELECT 'bk-' || bk.id::text, 'Barang Keluar Disetujui', bk.nomor_pengeluaran, 'out_approved', bk.completed_at
 	  FROM barang_keluar bk
 	  WHERE bk.status = 'selesai' AND bk.completed_at IS NOT NULL ` + optAnd(!since.IsZero(), "bk.completed_at") + `
-	  UNION ALL
-	  SELECT 'pg-' || pg.id::text, CASE WHEN pg.status='Terkirim' THEN 'Pengiriman Selesai' ELSE 'Pengiriman' END, pg.nomor_pengiriman, 'ship', pg.created_at
-	  FROM pengiriman pg ` + optWhere(!since.IsZero()) + `
-	  UNION ALL
-	  SELECT 'po-' || po.id::text, 'Purchase Order', po.nomor_po, 'po', po.created_at
-	  FROM purchase_orders po ` + optWhere(!since.IsZero()) + `
 	  UNION ALL
 	  SELECT 'so-' || so.id::text, 'Stock Opname', so.nomor_opname, 'opname', so.created_at
 	  FROM stock_opname so ` + optWhere(!since.IsZero()) + `

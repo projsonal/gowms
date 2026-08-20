@@ -187,7 +187,14 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	}
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 
-	bk, err := h.repo.Complete(id, userID)
+	var req CompleteBKRequest
+	_ = c.BodyParser(&req)
+	serials := make(map[uint][]string, len(req.Items))
+	for _, it := range req.Items {
+		serials[it.BarangKeluarItemID] = it.SerialNumbers
+	}
+
+	bk, err := h.repo.Complete(id, userID, serials)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
