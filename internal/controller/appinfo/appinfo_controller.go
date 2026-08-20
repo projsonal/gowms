@@ -3,6 +3,8 @@ package appinfo
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/projsonal/gowms/internal/middleware"
+	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
@@ -65,10 +67,6 @@ var changelogData = []VersionEntry{
 	},
 }
 
-type Controller struct{}
-
-func New() *Controller { return &Controller{} }
-
 type VersionResponse struct {
 	Version     string `json:"version"`
 	AppName     string `json:"app_name"`
@@ -91,6 +89,20 @@ func (h *Controller) Changelog(c *fiber.Ctx) error {
 
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/app")
+	// Publik (tidak butuh login) — cuma menampilkan info aplikasi, tidak
+	// ada data sensitif.
 	g.Get("/version", h.Version)
 	g.Get("/changelog", h.Changelog)
+
+	// Cek/Update — WAJIB login (beda dari /version & /changelog di atas):
+	// CheckUpdate & UpdateStatus murni baca, boleh role apa saja yang
+	// sudah login; TriggerUpdate KHUSUS super_admin karena efeknya besar
+	// (menyalakan Mode Pemeliharaan otomatis & me-restart proses backend
+	// lewat skrip deploy — lihat update_controller.go).
+	loggedIn := middleware.JWTAuth(h.jwtSvc)
+	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
+
+	g.Get("/check-update", loggedIn, h.CheckUpdate)
+	g.Get("/update-status", loggedIn, h.UpdateStatus)
+	g.Post("/update", loggedIn, onlySuperAdmin, h.TriggerUpdate)
 }

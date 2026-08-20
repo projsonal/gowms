@@ -196,7 +196,7 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 		AssetController:         cAsset,
 		BarangRusakController:   cBarangRusak,
 		TaskController:          cTask,
-		AppInfoController:       appinfoController.New(),
+		AppInfoController:       appinfoController.New(cfg, jwtSvc, rMaintenance, rNotification),
 		TrashController:         trashController.New(db, jwtSvc),
 		NotificationController:  notificationController.New(rNotification, jwtSvc),
 		NotificationRepo:        rNotification,

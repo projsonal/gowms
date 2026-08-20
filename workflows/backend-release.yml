@@ -1,0 +1,90 @@
+# File ini: .github/workflows/release.yml  (letakkan di repo projsonal/gowms,
+# di samping .github/workflows/deploy.yml yang sudah ada — lihat
+# workflows/backend-deploy.yml)
+#
+# Kenapa workflow terpisah dari deploy.yml? deploy.yml jalan di SETIAP push
+# ke main dan langsung mendorong binary ke VPS produksi (deploy manual/CD
+# biasa) — TIDAK membuat rilis GitHub. Fitur "Cek Update"/"Update Sekarang"
+# (lihat internal/controller/appinfo/update_controller.go &
+# docs/self-update-setup.md) butuh RILIS GITHUB RESMI dengan asset binary
+# terlampir, supaya:
+#   1. GET /repos/{owner}/{repo}/releases/latest (dipanggil
+#      pkg/selfupdate.FetchLatestRelease) punya sesuatu untuk dikembalikan
+#   2. deploy/scripts/self-update.sh punya file untuk diunduh & dipasang
+#      di VPS mana pun yang mengaktifkan AUTO_UPDATE_ENABLED=true
+#
+# Jadi alur rilis yang disarankan:
+#   1. Selesai kerja di main, update CurrentVersion (appinfo_controller.go)
+#      + changelogData + changelog.yml ke versi baru, mis. v1.4.0
+#   2. `git tag v1.4.0 && git push origin v1.4.0`
+#   3. Workflow ini otomatis build + publish rilis GitHub v1.4.0 dengan
+#      asset gowms-backend-linux-amd64 + checksum-nya
+#   4. Server manapun yang AUTO_UPDATE_ENABLED=true sekarang bisa melihat
+#      "update tersedia" lewat GET /app/check-update, lalu super_admin
+#      menekan "Update Sekarang" (POST /app/update) kapan pun siap.
+#
+# Secrets: TIDAK ada secret tambahan yang wajib diisi — cukup
+# GITHUB_TOKEN bawaan Actions (permissions: contents: write di bawah)
+# untuk membuat rilis di repo yang sama.
+
+name: Release Backend
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install swag CLI
+        run: go install github.com/swaggo/swag/cmd/swag@v1.16.4
+
+      - name: Generate Swagger docs
+        run: swag init -g cmd/main.go -o docs
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -v
+
+      # Nama & flag build SENGAJA sama persis dengan workflows/backend-deploy.yml
+      # (CGO_ENABLED=0, -ldflags="-s -w") supaya binary rilis yang diunduh
+      # self-update.sh identik dengan yang biasa didorong lewat deploy.yml —
+      # tidak ada jalur build kedua yang bisa diam-diam berbeda perilaku.
+      - name: Build binary (linux/amd64)
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -ldflags="-s -w" -o gowms-backend-linux-amd64 ./cmd/main.go
+
+      - name: Generate checksum
+        run: sha256sum gowms-backend-linux-amd64 > gowms-backend-linux-amd64.sha256
+
+      # tag_name diambil dari ref yang men-trigger workflow ini (mis.
+      # "v1.4.0") — HARUS sama persis dengan CurrentVersion yang dibakar
+      # ke appinfo_controller.go, karena selfupdate.CompareVersions
+      # membandingkan tag rilis ini terhadap CurrentVersion apa adanya.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            gowms-backend-linux-amd64
+            gowms-backend-linux-amd64.sha256
