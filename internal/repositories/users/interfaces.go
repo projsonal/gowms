@@ -1,5 +1,3 @@
-// Package users mengakses tabel users — dipakai modul Auth (login, cek
-// kredensial) dan modul Manajemen User (CRUD akun).
 package users
 
 import (
@@ -9,7 +7,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// Repository mendefinisikan seluruh operasi data untuk User.
 type Repository interface {
 	FindByUsername(username string) (*model.User, error)
 	FindByID(id uint) (*model.User, error)
@@ -21,9 +18,7 @@ type Repository interface {
 	UpdateLastLogin(userID uint) error
 	List(p utils.PaginationParams) ([]model.User, int64, error)
 
-	// RegisterFailedLogin menaikkan counter gagal login; kalau sudah
-	// melewati ambang batas, kunci akun sementara (LockedUntil).
 	RegisterFailedLogin(userID uint, maxAttempts int, lockDuration time.Duration) error
-	// ResetFailedLogin dipanggil setelah login berhasil (reset counter & unlock).
+
 	ResetFailedLogin(userID uint) error
 }

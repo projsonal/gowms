@@ -7,10 +7,6 @@ import (
 	"github.com/projsonal/gowms/pkg/constant"
 )
 
-// operationalModules — modul kerja sehari-hari (BUKAN manajemen_user/
-// settings, yang sengaja tidak diberi izin default ke admin/karyawan demi
-// prinsip least-privilege — super_admin tetap bisa akses semua modul
-// tanpa bergantung matrix ini sama sekali, lihat RequirePermission()).
 var operationalModules = []string{
 	constant.ModuleKelolaBarang,
 	constant.ModuleSupplier,
@@ -25,8 +21,6 @@ var operationalModules = []string{
 	constant.ModuleDashboard,
 }
 
-// grant memasangkan satu module dengan beberapa action sekaligus — helper
-// kecil supaya daftar izin default di bawah gampang dibaca.
 type grant struct {
 	modules []string
 	actions []string
@@ -44,18 +38,6 @@ func expandGrants(grants []grant) []struct{ module, action string } {
 	return out
 }
 
-// SeedDefaultPermissions memberi izin awal yang masuk akal untuk role
-// "admin" dan "karyawan" SAAT PERTAMA KALI dibuat (role_permissions-nya
-// masih kosong sama sekali) — supaya akun baru langsung bisa dipakai,
-// bukan terkunci total sampai super_admin sempat membuka Perizinan Hak
-// Akses dan menyalakan puluhan toggle satu per satu. Kalau sebuah role
-// SUDAH punya minimal satu baris role_permissions (mis. sudah pernah
-// diatur manual lewat UI Perizinan Hak Akses), fungsi ini TIDAK
-// menimpanya — jadi aman dipanggil berulang setiap kali server start.
-//
-// super_admin SENGAJA tidak diseed di sini sama sekali: role itu selalu
-// lolos RequirePermission() tanpa bergantung baris di tabel ini (lihat
-// internal/middleware/rbac_middleware.go), jadi tidak butuh baris apa pun.
 func SeedDefaultPermissions(db *gorm.DB) error {
 	var adminRole, karyawanRole model.Role
 	if err := db.Where("name = ?", constant.RoleAdmin).First(&adminRole).Error; err != nil {
@@ -74,16 +56,7 @@ func SeedDefaultPermissions(db *gorm.DB) error {
 
 	karyawanGrants := expandGrants([]grant{
 		{modules: operationalModules, actions: []string{constant.ActionView, constant.ActionTambah}},
-		// Karyawan (kurir) WAJIB izin "edit" khusus di modul Pengiriman —
-		// endpoint kirim ping GPS (POST /pengiriman/:id/lokasi) dijaga
-		// permission "edit" (lihat RegisterRoutes di
-		// pengiriman_controller.go), bukan "tambah". Tanpa ini, fitur
-		// "Bagikan Lokasi" kurir akan selalu gagal dengan "role anda
-		// tidak memiliki izin untuk aksi ini" walau role karyawan-nya
-		// sendiri sudah benar. Ditambahkan ke daftar grant YANG SAMA
-		// (bukan panggilan seedRoleIfEmpty terpisah) supaya guard
-		// "sudah pernah diseed" di bawah tidak membuat baris ini
-		// terlewat begitu saja pada panggilan kedua.
+
 		{modules: []string{constant.ModulePengiriman}, actions: []string{constant.ActionEdit}},
 	})
 	if err := seedRoleIfEmpty(db, karyawanRole.ID, karyawanGrants); err != nil {
@@ -98,7 +71,7 @@ func seedRoleIfEmpty(db *gorm.DB, roleID uint, grants []struct{ module, action s
 		return err
 	}
 	if count > 0 {
-		return nil // sudah pernah dikonfigurasi (manual/seeding sebelumnya) -- jangan ditimpa
+		return nil
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {

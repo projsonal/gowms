@@ -1,10 +1,7 @@
-package notification
+package notifikasi
 
 import (
-	"time"
-
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/projsonal/gowms/internal/model"
 	"github.com/projsonal/gowms/pkg/utils"
@@ -94,13 +91,12 @@ func (r *repository) MarkAllRead(userID uint, userRole string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-
-	rows := make([]model.NotificationRead, len(ids))
-	now := time.Now()
-	for i, id := range ids {
-		rows[i] = model.NotificationRead{NotificationID: id, UserID: userID, ReadAt: now}
-	}
-	return r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&rows).Error
+	return r.db.Exec(
+		`INSERT INTO notification_reads (notification_id, user_id, read_at)
+		 SELECT unnest(?::int[]), ?, NOW()
+		 ON CONFLICT (notification_id, user_id) DO NOTHING`,
+		ids, userID,
+	).Error
 }
 
 func (r *repository) Dismiss(notificationID, userID uint) error {

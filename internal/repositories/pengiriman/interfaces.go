@@ -1,6 +1,3 @@
-// Package pengiriman mengakses tabel pengiriman & pengiriman_tracking_points
-// pada modul "Pengiriman": pengiriman barang (pickup/dropoff) lengkap
-// dengan pelacakan posisi kurir secara live (lat/long).
 package pengiriman
 
 import (
@@ -27,9 +24,6 @@ type Repository interface {
 	Jadwalkan(id uint, namaKurir, teleponKurir string, estimasiTiba *time.Time) (*model.Pengiriman, error)
 	Mulai(id uint) (*model.Pengiriman, error)
 
-	// RecordLocation menyimpan ping posisi GPS kurir: menambah baris baru
-	// ke riwayat (PengirimanTrackingPoint) SEKALIGUS memperbarui
-	// LastLat/LastLng/LastLocationAt pada header, dalam satu transaksi.
 	RecordLocation(id uint, lat, lng float64, kecepatan *float64, recordedAt time.Time) (*model.Pengiriman, error)
 	ListTrackingPoints(pengirimanID uint, limit int) ([]model.PengirimanTrackingPoint, error)
 

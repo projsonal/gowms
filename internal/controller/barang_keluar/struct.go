@@ -6,7 +6,7 @@ import (
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	bkRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
-	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notifikasi"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -26,16 +26,13 @@ func New(repo bkRepo.Repository, barangRepo barangRepo.Repository, gudangRepo gu
 }
 
 type ItemRequest struct {
-	BarangID uint  `json:"barang_id" validate:"required"`
-	RakID    *uint `json:"rak_id"`
-	Qty      int   `json:"qty" validate:"required,min=1"`
+	BarangID uint `json:"barang_id" validate:"required"`
+	Qty      int  `json:"qty" validate:"required,min=1"`
 }
 
 type BKRequest struct {
 	GudangID uint `json:"gudang_id" validate:"required"`
-	// Tanggal: string "YYYY-MM-DD" — lihat catatan lengkap di
-	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal soal
-	// kenapa ini WAJIB string, bukan time.Time langsung.
+
 	Tanggal   string        `json:"tanggal" validate:"required"`
 	Keperluan string        `json:"keperluan" validate:"required,max=255"`
 	Penerima  string        `json:"penerima" validate:"max=150"`
@@ -46,11 +43,6 @@ func parseTanggalHarian(raw string) (time.Time, error) {
 	return time.Parse("2006-01-02", raw)
 }
 
-// CompleteBKRequest — dikirim ke PATCH /barang-keluar/:id/selesai.
-// Sama pola & alasannya dengan CompleteBMRequest di paket
-// internal/controller/barang_masuk — lihat komentar di sana. Bedanya di
-// sini SN yang diisi harus SUDAH TERDAFTAR (dipilih dari yang berstatus
-// tersedia di gudang asal), bukan SN baru.
 type CompleteBKRequest struct {
 	Items []ItemSerialInput `json:"items"`
 }

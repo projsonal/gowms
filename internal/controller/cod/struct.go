@@ -21,7 +21,7 @@ type CodRequest struct {
 	Pelanggan string `json:"pelanggan" validate:"required,max=150"`
 	Nominal   int64  `json:"nominal" validate:"required,min=1"`
 	Kurir     string `json:"kurir" validate:"max=100"`
-	Tanggal   string `json:"tanggal" validate:"required"` // format YYYY-MM-DD
+	Tanggal   string `json:"tanggal" validate:"required"`
 	Status    string `json:"status" validate:"required,oneof=menunggu lunas bermasalah"`
 }
 

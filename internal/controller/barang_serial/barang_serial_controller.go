@@ -11,9 +11,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// Module — dipakai izin (RBAC) yang SAMA dengan modul Kelola Barang,
-// karena unit/SN adalah rincian dari data barang itu sendiri, bukan
-// modul tersendiri secara bisnis (lihat internal/controller/barang).
 const Module = constant.ModuleKelolaBarang
 
 func parseIDParam(c *fiber.Ctx) (uint, error) {
@@ -24,17 +21,18 @@ func parseIDParam(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
-// List GET /barang-serial?page=&limit=&search=&barang_id=&gudang_id=&status=
-// search mencocokkan nomor_seri (ILIKE) — dipakai kotak pencarian umum di
-// halaman daftar unit.
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	barangID, _ := strconv.ParseUint(c.Query("barang_id", "0"), 10, 64)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
+	bmItemID, _ := strconv.ParseUint(c.Query("barang_masuk_item_id", "0"), 10, 64)
+	bkItemID, _ := strconv.ParseUint(c.Query("barang_keluar_item_id", "0"), 10, 64)
 	f := barangSerialRepo.Filter{
-		BarangID: uint(barangID),
-		GudangID: uint(gudangID),
-		Status:   c.Query("status", ""),
+		BarangID:           uint(barangID),
+		GudangID:           uint(gudangID),
+		Status:             c.Query("status", ""),
+		BarangMasukItemID:  uint(bmItemID),
+		BarangKeluarItemID: uint(bkItemID),
 	}
 	list, total, err := h.repo.List(p, f)
 	if err != nil {
@@ -43,11 +41,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar unit barang berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Create POST /barang-serial — pendaftaran unit MANUAL, khusus untuk
-// mendigitalisasi stok fisik yang sudah ada di gudang SEBELUM modul
-// pelacakan SN ini dipakai (padanan dengan field Stok saat Tambah Barang
-// baru di internal/controller/barang). Menaikkan Barang.Stok +1 sekaligus
-// — lihat barangSerialRepo.Repository.Create.
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req CreateRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -56,15 +49,13 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if _, err := h.barangRepo.FindByID(req.BarangID); err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, constant.ErrSerialBarangTidakAda, nil)
 	}
-	s, err := h.repo.Create(req.BarangID, req.GudangID, req.RakID, req.SerialNumber, req.Catatan)
+	s, err := h.repo.Create(req.BarangID, req.GudangID, req.SerialNumber, req.Catatan)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusConflict, err.Error(), nil)
 	}
 	return utils.Created(c, "unit berhasil didaftarkan, stok barang ikut bertambah", s)
 }
 
-// Detail GET /barang-serial/:id — sertakan nomor dokumen Barang
-// Masuk/Keluar asal & tujuan (riwayat unit), lihat DetailResponse.
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -83,11 +74,6 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	})
 }
 
-// Cari GET /barang-serial/cari/:sn — pencarian utama fitur pembeda
-// barang fisik: scan/ketik satu SN untuk langsung tahu barang apa,
-// status, lokasinya saat ini, DAN riwayat dokumen Masuk/Keluarnya —
-// walau KodeBarang-nya sama dengan unit lain yang tampak identik di
-// daftar Kelola Barang.
 func (h *Controller) Cari(c *fiber.Ctx) error {
 	sn := c.Params("sn")
 	if sn == "" {
@@ -106,9 +92,6 @@ func (h *Controller) Cari(c *fiber.Ctx) error {
 	})
 }
 
-// Ringkasan GET /barang-serial/ringkasan/:barang_id — hitungan unit per
-// status untuk satu barang, dipakai kartu ringkas di halaman detail
-// Kelola Barang.
 func (h *Controller) Ringkasan(c *fiber.Ctx) error {
 	barangID, err := strconv.ParseUint(c.Params("barang_id"), 10, 64)
 	if err != nil {
@@ -123,8 +106,6 @@ func (h *Controller) Ringkasan(c *fiber.Ctx) error {
 	})
 }
 
-// UpdateStatus PATCH /barang-serial/:id/status — tandai rusak/tersedia
-// secara manual, di luar alur dokumen Barang Masuk/Keluar.
 func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -141,8 +122,6 @@ func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	return utils.OK(c, "status unit berhasil diperbarui", s)
 }
 
-// Delete DELETE /barang-serial/:id — hapus baris unit yang salah input
-// (mis. salah scan SN). Soft-delete, lihat model.BarangSerial.
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {

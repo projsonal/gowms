@@ -1,11 +1,3 @@
-// Package selfupdate berisi logika "Cek Update"/"Update Sekarang" di
-// Settings > Sistem: mengecek rilis terbaru di GitHub, membandingkan
-// dengan versi yang sedang berjalan, dan (kalau diaktifkan lewat
-// SelfUpdateConfig.Enabled) menjalankan skrip deploy di latar belakang.
-//
-// Paket ini SENGAJA tidak bergantung ke internal/ (pola yang sama dengan
-// pkg/reportexport) — cuma butuh string versi & konfigurasi, tidak perlu
-// tahu apa pun soal model/repository aplikasi.
 package selfupdate
 
 import (
@@ -19,14 +11,8 @@ import (
 	"time"
 )
 
-// ErrNoReleases dikembalikan kalau repo GitHub belum pernah punya rilis
-// resmi (endpoint /releases/latest mengembalikan 404) — beda dari error
-// jaringan/permintaan gagal, supaya pemanggil bisa kasih pesan yang tepat
-// ("repo ini belum punya rilis") alih-alih pesan error generik.
 var ErrNoReleases = errors.New("selfupdate: repo belum punya rilis resmi di GitHub")
 
-// Release — subset field dari response GitHub REST API
-// GET /repos/{owner}/{repo}/releases/latest yang relevan di sini.
 type Release struct {
 	TagName     string `json:"tag_name"`
 	Name        string `json:"name"`
@@ -37,12 +23,6 @@ type Release struct {
 	Draft       bool   `json:"draft"`
 }
 
-// FetchLatestRelease memanggil GitHub REST API PUBLIK (tidak butuh token
-// — cukup untuk repo publik; untuk repo privat, tambahkan header
-// Authorization di sini kalau nanti dibutuhkan) untuk mengambil rilis
-// TERBARU (non-draft, non-prerelease — itu definisi resmi endpoint
-// /releases/latest dari GitHub sendiri, jadi kita tidak perlu menyortir
-// manual daftar tag).
 func FetchLatestRelease(owner, repo string) (*Release, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
 	client := &http.Client{Timeout: 8 * time.Second}
@@ -74,19 +54,6 @@ func FetchLatestRelease(owner, repo string) (*Release, error) {
 	return &release, nil
 }
 
-// CompareVersions membandingkan dua string versi ala semver TAPI toleran
-// terhadap prefix "v" dan jumlah segmen yang tidak sama (mis. "v1.3" vs
-// "v1.3.0" dianggap setara) — tag di GitHub sering ditulis manual, tidak
-// selalu 3 segmen persis. Mengembalikan:
-//
-//	-1 kalau a < b (a lebih lama)
-//	 0 kalau a == b
-//	 1 kalau a > b (a lebih baru)
-//
-// Segmen non-angka (mis. "v1.3.0-beta") dipotong di karakter non-angka
-// pertama tiap segmen — cukup untuk kebutuhan "ada versi lebih baru atau
-// tidak", bukan pembanding semver lengkap dengan pre-release/build
-// metadata.
 func CompareVersions(a, b string) int {
 	segA := normalizeVersionSegments(a)
 	segB := normalizeVersionSegments(b)

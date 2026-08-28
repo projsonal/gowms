@@ -4,7 +4,7 @@ import (
 	"time"
 
 	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
-	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notifikasi"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 

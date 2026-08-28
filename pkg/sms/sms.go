@@ -1,6 +1,3 @@
-// Package sms mengirim kode OTP lewat gateway SMS. Strukturnya sengaja
-// dibuat mirip pkg/wa (WhatsApp) supaya kedua kanal pengiriman OTP
-// (WhatsApp & SMS) punya bentuk pemakaian yang konsisten di controller.
 package sms
 
 import (
@@ -12,7 +9,6 @@ import (
 	"time"
 )
 
-// Sender mengirim kode OTP lewat SMS ke nomor HP tertentu.
 type Sender interface {
 	SendOTP(phoneNumber, code string) error
 }

@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	notification "github.com/projsonal/gowms/internal/controller/notification"
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	soRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
@@ -35,11 +35,6 @@ func (h *Controller) validateItems(items []ItemRequest) error {
 		if _, err := h.barangRepo.FindByID(it.BarangID); err != nil {
 			return fmt.Errorf("barang id %d tidak ditemukan", it.BarangID)
 		}
-		if it.RakID != nil {
-			if _, err := h.gudangRepo.FindRakByID(*it.RakID); err != nil {
-				return fmt.Errorf("rak id %d tidak ditemukan", *it.RakID)
-			}
-		}
 	}
 	return nil
 }
@@ -48,13 +43,12 @@ func toItemInputs(items []ItemRequest) []soRepo.ItemInput {
 	out := make([]soRepo.ItemInput, 0, len(items))
 	for _, it := range items {
 		out = append(out, soRepo.ItemInput{
-			BarangID: it.BarangID, RakID: it.RakID, StokFisik: it.StokFisik, Catatan: it.Catatan,
+			BarangID: it.BarangID, StokFisik: it.StokFisik, Catatan: it.Catatan,
 		})
 	}
 	return out
 }
 
-// List GET /stock-opname?page=&limit=&search=&status=&gudang_id=
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
@@ -67,7 +61,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar stock opname berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /stock-opname/:id
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -80,9 +73,6 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	return utils.OK(c, "detail stock opname berhasil diambil", so)
 }
 
-// Create POST /stock-opname — StokSistem tiap item di-snapshot otomatis
-// dari Barang.Stok saat ini oleh repository (bukan dari input client),
-// operator hanya mengisi StokFisik hasil hitung manual.
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req SORequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -127,7 +117,6 @@ func (h *Controller) requireDraft(id uint) (*model.StockOpname, error) {
 	return so, nil
 }
 
-// Update PUT /stock-opname/:id — hanya boleh selama status masih draft.
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -162,7 +151,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen stock opname berhasil diperbarui", so)
 }
 
-// Delete DELETE /stock-opname/:id — hanya boleh selama status draft.
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -177,8 +165,6 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen stock opname berhasil dihapus", nil)
 }
 
-// Complete PATCH /stock-opname/:id/selesai — menerapkan selisih hasil
-// hitung fisik ke stok barang (dan isi rak bila item terkait rak).
 func (h *Controller) Complete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -194,10 +180,6 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	return utils.OK(c, "stock opname berhasil diselesaikan, selisih telah diterapkan ke stok", so)
 }
 
-// notifyLowStock — sama polanya seperti versi di barang_keluar_controller.go,
-// bedanya di sini "sebelum" & "sesudah" sudah langsung tersedia dari
-// StokSistem (snapshot Barang.Stok saat item opname dibuat) & StokFisik
-// (angka final yang diterapkan ke Barang.Stok, lihat repo.Complete).
 func (h *Controller) notifyLowStock(items []model.StockOpnameItem) {
 	for _, item := range items {
 		if item.Barang == nil || item.Barang.StokMinimum <= 0 || item.Selisih == 0 {
@@ -214,7 +196,6 @@ func (h *Controller) notifyLowStock(items []model.StockOpnameItem) {
 	}
 }
 
-// Batalkan PATCH /stock-opname/:id/batalkan
 func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -227,7 +208,6 @@ func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen stock opname berhasil dibatalkan", so)
 }
 
-// Summary GET /stock-opname/summary
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
 	draft, err2 := h.repo.CountByStatus(constant.StatusSODraft)
@@ -240,7 +220,6 @@ func (h *Controller) Summary(c *fiber.Ctx) error {
 	})
 }
 
-// RegisterRoutes mendaftarkan endpoint modul "Stock Opname".
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/stock-opname", middleware.JWTAuth(h.jwtSvc))
 

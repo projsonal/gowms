@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	notification "github.com/projsonal/gowms/internal/controller/notification"
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	bmRepo "github.com/projsonal/gowms/internal/repositories/barang_masuk"
@@ -49,11 +49,6 @@ func (h *Controller) validateItem(it ItemRequest) error {
 	if _, err := h.barangRepo.FindByID(it.BarangID); err != nil {
 		return fmt.Errorf("barang id %d tidak ditemukan", it.BarangID)
 	}
-	if it.RakID != nil {
-		if _, err := h.gudangRepo.FindRakByID(*it.RakID); err != nil {
-			return fmt.Errorf("rak id %d tidak ditemukan", *it.RakID)
-		}
-	}
 	return nil
 }
 
@@ -61,13 +56,12 @@ func toItemModels(items []ItemRequest) []model.BarangMasukItem {
 	out := make([]model.BarangMasukItem, 0, len(items))
 	for _, it := range items {
 		out = append(out, model.BarangMasukItem{
-			BarangID: it.BarangID, RakID: it.RakID, Qty: it.Qty, HargaSatuan: it.HargaSatuan,
+			BarangID: it.BarangID, Qty: it.Qty, HargaSatuan: it.HargaSatuan,
 		})
 	}
 	return out
 }
 
-// List GET /barang-masuk?page=&limit=&search=&status=&gudang_id=&purchase_order_id=
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
@@ -85,7 +79,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar barang masuk berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /barang-masuk/:id
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -98,8 +91,6 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	return utils.OK(c, "detail barang masuk berhasil diambil", bm)
 }
 
-// Create POST /barang-masuk — dibuat berstatus "draft"; stok & rak baru
-// berubah setelah dokumen diselesaikan lewat Complete.
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req BMRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -145,7 +136,6 @@ func (h *Controller) requireDraft(id uint) (*model.BarangMasuk, error) {
 	return bm, nil
 }
 
-// Update PUT /barang-masuk/:id — hanya boleh selama status masih draft.
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -180,7 +170,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen barang masuk berhasil diperbarui", bm)
 }
 
-// Delete DELETE /barang-masuk/:id — hanya boleh selama status draft.
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -202,10 +191,6 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	}
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 
-	// Body OPSIONAL — dokumen tanpa barang serial tidak perlu kirim apa
-	// pun. Kalau body dikirim tapi tidak valid JSON, abaikan saja (bukan
-	// kegagalan fatal); validasi SEBENARNYA (jumlah SN vs Qty) tetap
-	// dilakukan di repo.Complete().
 	var req CompleteBMRequest
 	_ = c.BodyParser(&req)
 	serials := make(map[uint][]string, len(req.Items))
@@ -220,7 +205,6 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	return utils.OK(c, "barang masuk berhasil diselesaikan, stok & rak telah diperbarui", bm)
 }
 
-// Batalkan PATCH /barang-masuk/:id/batalkan
 func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -233,7 +217,6 @@ func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen barang masuk berhasil dibatalkan", bm)
 }
 
-// Summary GET /barang-masuk/summary
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
 	draft, err2 := h.repo.CountByStatus(constant.StatusBMDraft)

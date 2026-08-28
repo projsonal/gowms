@@ -83,7 +83,7 @@ func (h *Controller) ReportExport(c *fiber.Ctx) error {
 		f.SetCellValue(sheet, "D5", "Info")
 		f.SetCellValue(sheet, "E5", "Status")
 		f.SetCellValue(sheet, "F5", "Qty/Total")
-		// Data
+
 		for i, r := range rows {
 			row := i + 6
 			f.SetCellValue(sheet, cell("A", row), i+1)

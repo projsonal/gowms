@@ -1,14 +1,3 @@
-// Package trash mengimplementasikan fitur "Tempat Sampah" generik: barang
-// yang dihapus dari UI (Manajemen Aset Gudang, Kelola Barang, Manajemen
-// Gudang, Barang Rusak) TIDAK langsung hilang permanen — GORM menandainya
-// `deleted_at` (soft-delete, lihat kolom DeletedAt di masing-masing model)
-// sehingga otomatis tersembunyi dari query normal TAPI masih ada di
-// database dan bisa dipulihkan (restore) atau baru benar-benar dihapus
-// (hard delete) lewat menu ini.
-//
-// SENGAJA generik satu controller untuk semua tipe (bukan endpoint
-// terpisah per modul) supaya menambah modul baru ke Tempat Sampah cukup
-// menambah satu entri di `registry` di bawah — tidak perlu controller baru.
 package trash
 
 import (
@@ -23,13 +12,8 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// entry — satu tipe data yang ikut fitur Tempat Sampah.
 type entry struct {
-	// label: dipakai di query ?type=... dan ditampilkan ke user.
 	label string
-	// nama, keterangan: field yang dibaca lewat reflection-free type switch
-	// di summarize() untuk menampilkan ringkasan tiap baris sampah tanpa
-	// perlu bentuk response terpisah per tipe.
 }
 
 var registry = map[string]entry{
@@ -39,7 +23,6 @@ var registry = map[string]entry{
 	"barang_rusak": {label: "Barang Rusak"},
 }
 
-// Item — bentuk ringkas satu baris di Tempat Sampah, seragam untuk semua tipe.
 type Item struct {
 	Type      string    `json:"type"`
 	ID        uint      `json:"id"`
@@ -91,9 +74,6 @@ func summarize(t string) (judul func(any) string, subjudul func(any) string) {
 	}
 }
 
-// List GET /trash?type=aset|barang|gudang|barang_rusak — kalau `type`
-// dikosongkan, kembalikan gabungan semua tipe (dipakai badge counter di
-// ikon Tempat Sampah pada header).
 func (h *Controller) List(c *fiber.Ctx) error {
 	reqType := c.Query("type", "")
 	types := []string{reqType}
@@ -111,9 +91,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 		modelPtr, _ := h.modelForType(t)
 		judulFn, subjudulFn := summarize(t)
 
-		// Unscoped(): WAJIB, supaya GORM tidak otomatis menambahkan
-		// `WHERE deleted_at IS NULL` seperti query normal — di sini kita
-		// justru mau baris yang SUDAH ter-soft-delete.
 		rows, err := queryDeleted(h.db, t, modelPtr)
 		if err != nil {
 			return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengambil data tempat sampah", nil)
@@ -173,8 +150,6 @@ func queryDeleted(db *gorm.DB, t string, modelPtr any) ([]deletedRow, error) {
 	return out, nil
 }
 
-// Restore POST /trash/:type/:id/restore — batalkan soft-delete (set
-// deleted_at kembali NULL), baris langsung muncul lagi di modul aslinya.
 func (h *Controller) Restore(c *fiber.Ctx) error {
 	t := c.Params("type")
 	id, err := c.ParamsInt("id")
@@ -195,8 +170,6 @@ func (h *Controller) Restore(c *fiber.Ctx) error {
 	return utils.OK(c, "data berhasil dipulihkan", nil)
 }
 
-// Purge DELETE /trash/:type/:id — hapus PERMANEN, tidak bisa dibatalkan.
-// Dibatasi Super Admin & Admin lewat middleware di RegisterRoutes.
 func (h *Controller) Purge(c *fiber.Ctx) error {
 	t := c.Params("type")
 	id, err := c.ParamsInt("id")
@@ -217,9 +190,6 @@ func (h *Controller) Purge(c *fiber.Ctx) error {
 	return utils.OK(c, "data berhasil dihapus permanen", nil)
 }
 
-// Dibatasi Super Admin & Admin — melihat, memulihkan, ATAU menghapus
-// permanen data orang lain adalah aksi administratif, karyawan tidak
-// diberi akses ke Tempat Sampah sama sekali.
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/trash", middleware.JWTAuth(h.jwtSvc), middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin))
 	g.Get("/", h.List)

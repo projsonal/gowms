@@ -1,7 +1,5 @@
 package constant
 
-// Status model.BarangSerial — lihat dokumentasi lengkap siklus hidupnya
-// di komentar struct model.BarangSerial.
 const (
 	StatusSerialTersedia  = "tersedia"
 	StatusSerialTerpasang = "terpasang"

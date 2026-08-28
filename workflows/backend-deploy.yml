@@ -1,8 +1,8 @@
-# File ini: .github/workflows/deploy.yml  (letakkan di repo projsonal/gowms)
+# File ini: .github/workflows/deploy.yml  (letakkan di repo projsonal/inventory)
 #
 # Secrets yang wajib diisi di GitHub repo Settings > Secrets and variables > Actions:
 #   VPS_HOST        - IP / hostname VPS
-#   VPS_USER        - user SSH (mis. gowms atau deploy)
+#   VPS_USER        - user SSH (mis. inventory atau deploy)
 #   VPS_SSH_KEY     - private key SSH (format PEM, tanpa passphrase, khusus deploy)
 #   VPS_PORT        - port SSH (opsional, default 22)
 
@@ -42,13 +42,13 @@ jobs:
       - name: Build binary (linux/amd64)
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-          go build -ldflags="-s -w" -o gowms-backend ./cmd/main.go
+          go build -ldflags="-s -w" -o inventory-backend ./cmd/main.go
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gowms-backend
-          path: gowms-backend
+          name: inventory-backend
+          path: inventory-backend
           retention-days: 3
 
   deploy:
@@ -60,7 +60,7 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: gowms-backend
+          name: inventory-backend
 
       - name: Install SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -74,18 +74,18 @@ jobs:
 
       - name: Upload binary to VPS (staged path)
         run: |
-          chmod +x gowms-backend
-          scp -P "${{ secrets.VPS_PORT || 22 }}" gowms-backend \
-            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/gowms/backend/gowms-backend.new"
+          chmod +x inventory-backend
+          scp -P "${{ secrets.VPS_PORT || 22 }}" inventory-backend \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/inventory/backend/inventory-backend.new"
 
       - name: Atomic swap + restart via systemd
         run: |
           ssh -p "${{ secrets.VPS_PORT || 22 }}" "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" '
             set -e
-            sudo mv /opt/gowms/backend/gowms-backend.new /opt/gowms/backend/gowms-backend
-            sudo chmod +x /opt/gowms/backend/gowms-backend
-            sudo systemctl restart gowms-backend
+            sudo mv /opt/inventory/backend/inventory-backend.new /opt/inventory/backend/inventory-backend
+            sudo chmod +x /opt/inventory/backend/inventory-backend
+            sudo systemctl restart inventory-backend
             sleep 2
-            sudo systemctl is-active --quiet gowms-backend
+            sudo systemctl is-active --quiet inventory-backend
             curl -sf http://127.0.0.1:8080/health/live || (echo "Health check gagal!" && exit 1)
           '

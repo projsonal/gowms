@@ -18,9 +18,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// roleNameMap mengambil SEMUA role dalam satu query lalu memetakannya
-// {role_id: role_name}, dipakai List() untuk menghindari N+1 query
-// (sebelumnya toResponse memanggil roleRepo.FindByID per user di dalam loop).
 func (h *Controller) roleNameMap() map[uint]string {
 	roles, err := h.roleRepo.FindAll()
 	m := make(map[uint]string, len(roles))
@@ -43,8 +40,6 @@ func (h *Controller) toResponse(u *model.User, roleName string, isOnline bool) R
 	}
 }
 
-// toResponseSingle dipakai untuk endpoint yang mengembalikan 1 user saja
-// (Detail, Create, Update) sehingga tetap boleh query role sekali per request.
 func (h *Controller) toResponseSingle(u *model.User) Response {
 	roleName := ""
 	if r, err := h.roleRepo.FindByID(u.RoleID); err == nil {
@@ -54,7 +49,6 @@ func (h *Controller) toResponseSingle(u *model.User) Response {
 	return h.toResponse(u, roleName, online[u.ID])
 }
 
-// List GET /api/v1/users — "Semua akun pengguna sistem".
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	list, total, err := h.userRepo.List(p)
@@ -62,14 +56,14 @@ func (h *Controller) List(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusInternalServerError, cons.ErrGagalMengambilDaftarUser, nil)
 	}
 
-	roleNames := h.roleNameMap() // 1 query untuk semua role, bukan per-user
+	roleNames := h.roleNameMap()
 	userIDs := make([]uint, 0, len(list))
 	for _, u := range list {
 		userIDs = append(userIDs, u.ID)
 	}
-	onlineMap, err := h.authRepo.OnlineUserIDs(userIDs) // 1 query untuk status online semua user sekaligus
+	onlineMap, err := h.authRepo.OnlineUserIDs(userIDs)
 	if err != nil {
-		onlineMap = map[uint]bool{} // gagal cek status online BUKAN alasan gagal load seluruh daftar user
+		onlineMap = map[uint]bool{}
 	}
 
 	responses := make([]Response, 0, len(list))
@@ -116,7 +110,6 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	return utils.Created(c, cons.MsgUserBerhasilDibuat, h.toResponseSingle(u))
 }
 
-// Update PUT /api/v1/users/:id
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -154,14 +147,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, cons.MsgUserBerhasilDiubah, h.toResponseSingle(u))
 }
 
-// Delete DELETE /api/v1/users/:id — HANYA super_admin (lihat RegisterRoutes).
-//
-// Ini SENGAJA menonaktifkan akun (is_active=false), BUKAN menghapus baris
-// user dari database: banyak tabel lain (barang_masuk.diterima_oleh,
-// barang_keluar.dikeluarkan_oleh, purchase_orders.diajukan_oleh, dst)
-// mereferensikan user_id untuk jejak histori transaksi — hard delete akan
-// merusak riwayat itu atau gagal karena foreign key. Akun nonaktif otomatis
-// tidak bisa login lagi (lihat auth_controller.go: cek IsActive saat Login).
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -219,25 +204,6 @@ func (h *Controller) ChangePassword(c *fiber.Ctx) error {
 	return utils.OK(c, cons.MsgPasswordBerhasilUbah, nil)
 }
 
-// UpdateMeRequest — form Settings -> Profil "Simpan Perubahan". SENGAJA
-// tidak punya field RoleID/IsActive: siapa pun (termasuk karyawan) boleh
-// ubah profilnya sendiri, tapi role & status aktif akun HANYA boleh
-// diubah lewat Manajemen User (Update/Delete di atas, khusus staff) —
-// supaya user tidak bisa menaikkan role-nya sendiri.
-//
-// SENGAJA juga tidak ada field avatar di sini lagi — foto profil PUNYA
-// endpoint sendiri (UploadAvatar/DeleteAvatar di bawah) yang memang
-// dirancang untuk itu. Sebelumnya endpoint ini punya field AvatarURL yang
-// SELALU ditulis ulang ke DB walau tidak dikirim frontend (default string
-// kosong), jadi tiap klik "Simpan Perubahan" di tab Profil (mis. cuma
-// ganti username) otomatis MENGHAPUS foto yang sudah diupload. Dengan
-// avatar dikelola terpisah, bug itu tidak mungkin terulang karena field
-// ini sudah tidak ada.
-//
-// Username BOLEH diubah di sini (aman — JWT dikaitkan ke user ID, bukan
-// username, lihat pkg/utils JWTClaims, jadi ganti username tidak
-// memutus sesi aktif). Tetap perlu dicek unik seperti saat registrasi
-// (lihat pengecekan FindByUsername di UpdateMe).
 type UpdateMeRequest struct {
 	Username    string `json:"username" validate:"omitempty,min=4,max=50"`
 	Email       string `json:"email" validate:"omitempty,email"`
@@ -271,8 +237,7 @@ func (h *Controller) UpdateMe(c *fiber.Ctx) error {
 	if req.FullName != "" {
 		u.FullName = req.FullName
 	}
-	// PhoneNumber boleh dikosongkan lagi oleh user, jadi TIDAK dicek
-	// `!= ""` seperti Email/FullName di atas.
+
 	u.PhoneNumber = req.PhoneNumber
 
 	if err := h.userRepo.Update(u); err != nil {
@@ -281,16 +246,6 @@ func (h *Controller) UpdateMe(c *fiber.Ctx) error {
 	return utils.OK(c, "profil berhasil diperbarui", h.toResponseSingle(u))
 }
 
-// UploadAvatar POST /users/me/avatar (multipart/form-data, field "avatar")
-// — simpan ISI foto LANGSUNG di kolom database (AvatarData), BUKAN lagi
-// sebagai file di folder storage/. Foto profil = data pribadi yang
-// sensitif, dan folder storage/ sebelumnya di-serve sebagai file statis
-// publik (app.Static("/uploads", ...) di router.go) tanpa autentikasi
-// apa pun — siapa saja yang menebak/tahu nama filenya bisa buka foto
-// orang lain. Dengan disimpan di DB & diserve lewat ServeAvatar (WAJIB
-// login), foto tidak lagi bisa diakses tanpa otorisasi.
-// Dibatasi 2MB & hanya jpg/jpeg/png supaya tidak disalahgunakan untuk
-// upload file besar/berbahaya sembarangan.
 func (h *Controller) UploadAvatar(c *fiber.Ctx) error {
 	u, err := h.currentUser(c)
 	if err != nil {
@@ -301,7 +256,7 @@ func (h *Controller) UploadAvatar(c *fiber.Ctx) error {
 	if err != nil {
 		return utils.Fail(c, fiber.StatusBadRequest, "file avatar tidak ditemukan (field: avatar)", nil)
 	}
-	const maxAvatarSize = 2 * 1024 * 1024 // 2MB
+	const maxAvatarSize = 2 * 1024 * 1024
 	if fh.Size > maxAvatarSize {
 		return utils.Fail(c, fiber.StatusBadRequest, "ukuran file maksimal 2MB", nil)
 	}
@@ -331,9 +286,6 @@ func (h *Controller) UploadAvatar(c *fiber.Ctx) error {
 	return utils.OK(c, "foto profil berhasil diperbarui", h.toResponseSingle(u))
 }
 
-// DeleteAvatar DELETE /users/me/avatar — hapus foto profil milik user yang
-// sedang login (satu-satunya cara resmi mengosongkan foto sekarang; lihat
-// catatan di UpdateMeRequest).
 func (h *Controller) DeleteAvatar(c *fiber.Ctx) error {
 	u, err := h.currentUser(c)
 	if err != nil {
@@ -347,11 +299,6 @@ func (h *Controller) DeleteAvatar(c *fiber.Ctx) error {
 	return utils.OK(c, "foto profil berhasil dihapus", h.toResponseSingle(u))
 }
 
-// ServeAvatar GET /users/:id/avatar — WAJIB login (lihat RegisterRoutes),
-// beda dari file statis lama yang bisa dibuka siapa saja tanpa token.
-// Sengaja tidak dibatasi "hanya lihat punya sendiri" karena foto profil
-// juga ditampilkan di daftar user/Manajemen User untuk sesama user yang
-// sudah login.
 func (h *Controller) ServeAvatar(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -366,12 +313,6 @@ func (h *Controller) ServeAvatar(c *fiber.Ctx) error {
 	return c.Send(u.AvatarData)
 }
 
-// UserSessions GET /users/:id/sessions — HANYA super_admin (lihat
-// RegisterRoutes). Daftar perangkat/sesi login AKTIF milik user LAIN
-// (bukan diri sendiri, itu sudah ada di GET /auth/sessions) — dipakai
-// aksi "Lihat Perangkat" di Manajemen User supaya Super Admin bisa tahu
-// dari mana saja seorang user sedang login, sebelum memutuskan mencabut
-// salah satu/semua sesinya.
 func (h *Controller) UserSessions(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -398,11 +339,6 @@ func (h *Controller) UserSessions(c *fiber.Ctx) error {
 	return utils.OK(c, "berhasil memuat daftar sesi aktif", SessionListResponse{Sessions: result})
 }
 
-// RevokeUserSession DELETE /users/:id/sessions/:sessionId — HANYA
-// super_admin. Mencabut SATU sesi/perangkat milik user LAIN secara paksa
-// (mis. HP yang hilang, atau sekadar mengamankan akun) — user tsb akan
-// otomatis ter-logout dari perangkat itu begitu access token-nya
-// kedaluwarsa/dipakai refresh, karena refresh token-nya sudah dicabut.
 func (h *Controller) RevokeUserSession(c *fiber.Ctx) error {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -431,8 +367,7 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	authed.Patch("/me", h.UpdateMe)
 	authed.Post("/me/avatar", h.UploadAvatar)
 	authed.Delete("/me/avatar", h.DeleteAvatar)
-	// :id di sini boleh siapa saja yang sudah login (lihat catatan ServeAvatar),
-	// jadi didaftarkan di grup `authed`, BUKAN grup `g` yang dibatasi admin.
+
 	authed.Get("/:id/avatar", h.ServeAvatar)
 
 	g := authed.Group("", middleware.RequireRole(cons.RoleSuperAdmin, constant.RoleAdmin))
@@ -440,11 +375,9 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Get("/:id", h.Detail)
 	g.Post("/", middleware.RequireRole(cons.RoleSuperAdmin), h.Create)
 	g.Put("/:id", h.Update)
-	// Delete (nonaktifkan akun) HANYA super_admin, sama seperti Create.
+
 	g.Delete("/:id", middleware.RequireRole(cons.RoleSuperAdmin), h.Delete)
-	// Lihat & cabut sesi/perangkat user LAIN — HANYA super_admin (aksi
-	// keamanan sensitif, beda dari GET/DELETE /auth/sessions yang cuma
-	// untuk sesi diri sendiri, lihat catatan di UserSessions di atas).
+
 	g.Get("/:id/sessions", middleware.RequireRole(cons.RoleSuperAdmin), h.UserSessions)
 	g.Delete("/:id/sessions/:sessionId", middleware.RequireRole(cons.RoleSuperAdmin), h.RevokeUserSession)
 }

@@ -7,7 +7,7 @@ import (
 
 type usedStore struct {
 	mu   sync.Mutex
-	data map[string]time.Time // token -> waktu kedaluwarsa entry ini boleh dibuang
+	data map[string]time.Time
 }
 
 func newUsedStore() *usedStore {

@@ -48,8 +48,6 @@ func (r *repository) FindOrCreatePermission(module, action string) (*model.Permi
 	return &p, err
 }
 
-// ReplaceRolePermissions mengganti seluruh permission suatu role dalam satu
-// transaksi, dipanggil saat form matrix akses "Manajemen User" disimpan.
 func (r *repository) ReplaceRolePermissions(roleID uint, permissionIDs []uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("role_id = ?", roleID).Delete(&model.RolePermission{}).Error; err != nil {

@@ -7,9 +7,7 @@ import (
 
 type Filter struct {
 	Status string
-	// AssignedTo: kalau diisi, hanya tampilkan tugas milik user ini —
-	// dipakai karyawan/admin (lihat task_controller.go List()) supaya
-	// mereka hanya melihat tugas mereka sendiri, bukan seluruh tim.
+
 	AssignedTo uint
 }
 

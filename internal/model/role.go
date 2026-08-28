@@ -6,7 +6,7 @@ type Role struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	Name        string    `json:"name" gorm:"uniqueIndex;size:50;not null"`
 	Description string    `json:"description" gorm:"size:255"`
-	IsSystem    bool      `json:"is_system" gorm:"default:false"` // true = tidak boleh dihapus (mis. super_admin)
+	IsSystem    bool      `json:"is_system" gorm:"default:false"`
 	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

@@ -8,7 +8,7 @@ import (
 
 func (h *Controller) Check(c *fiber.Ctx) error {
 	var req CheckRequest
-	_ = c.BodyParser(&req) // body opsional, boleh kosong di percobaan pertama
+	_ = c.BodyParser(&req)
 
 	if req.BotToken != "" && h.botSvc.Verify(req.BotToken) {
 		fresh, err := h.botSvc.Issue()

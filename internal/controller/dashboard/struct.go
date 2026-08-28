@@ -30,7 +30,7 @@ func New(barangRepo barangRepo.Repository, gudangRepo gudangRepo.Repository,
 		barangRepo: barangRepo, gudangRepo: gudangRepo,
 		barangMasukRepo: barangMasukRepo, barangKeluarRepo: barangKeluarRepo,
 		stockOpnameRepo: stockOpnameRepo,
-		roleRepo: roleRepo, jwtSvc: jwtSvc, db: db,
+		roleRepo:        roleRepo, jwtSvc: jwtSvc, db: db,
 	}
 }
 
@@ -42,9 +42,6 @@ type KelolaBarangSummary struct {
 
 type GudangSummary struct {
 	TotalGudang int64 `json:"total_gudang"`
-	TotalRak    int64 `json:"total_rak"`
-	RakPenuh    int64 `json:"rak_penuh"`
-	RakKosong   int64 `json:"rak_kosong"`
 }
 
 type DokumenSummary struct {

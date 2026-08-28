@@ -1,23 +1,24 @@
 package barang
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
+	"github.com/projsonal/gowms/internal/repositories/barangstokgudang"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
 const Module = constant.ModuleKelolaBarang
 
-// parseIDParam mengonversi parameter path ":id" ke uint dan memvalidasi
-// formatnya, supaya path segmen non-numerik langsung dibalas 400 (bukan
-// diam-diam jadi id=0 dan baru gagal belakangan di lookup DB).
 func parseIDParam(c *fiber.Ctx) (uint, error) {
 	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 	if err != nil {
@@ -26,13 +27,6 @@ func parseIDParam(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
-// maskProtected menyamarkan field sensitif (harga beli & deskripsi) pada
-// baris yang di-Protect, KHUSUS untuk role karyawan — supaya karyawan tetap
-// bisa melihat baris itu ada di daftar (nama/SKU/stok) tapi tidak bisa
-// mengecek data komersialnya. super_admin & admin tetap melihat data asli.
-// Dipanggil di List/Detail sebelum data dikirim ke client (masking di sisi
-// server, bukan sekadar disembunyikan di UI, supaya benar-benar tidak
-// ikut terkirim lewat response API).
 func maskProtectedOne(role string, b *model.Barang) {
 	if role == constant.RoleSuperAdmin || role == constant.RoleAdmin || !b.IsProtected {
 		return
@@ -57,43 +51,28 @@ func parseListFilter(c *fiber.Ctx) barangRepo.Filter {
 		OnlyActive:  c.Query("status", "") == "aktif",
 	}
 
-	// --- Visibilitas alur persetujuan (lihat model.Barang.ApprovalStatus) ---
 	roleName, _ := c.Locals(constant.CtxRoleName).(string)
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 	switch roleName {
 	case constant.RoleSuperAdmin:
-		// super_admin lihat semua status secara default; ?approval_status=menunggu
-		// dipakai halaman "Menunggu Persetujuan" untuk fokus ke antrean review.
+
 		if s := c.Query("approval_status", ""); s != "" {
 			f.ApprovalStatuses = []string{s}
 		}
 	case constant.RoleAdmin:
-		// admin: lihat semua yang sudah disetujui, PLUS pengajuannya sendiri
-		// apa pun statusnya (termasuk yang masih menunggu/ditolak).
+
 		f.ApprovalStatuses = []string{constant.ApprovalDisetujui}
 		f.OrSubmittedBy = userID
-	default: // karyawan & role lain: HANYA yang sudah disetujui.
+	case constant.RoleKaryawan:
+
+		f.ApprovalStatuses = []string{constant.ApprovalDisetujui}
+		f.OrSubmittedBy = userID
+	default:
 		f.ApprovalStatuses = []string{constant.ApprovalDisetujui}
 	}
 	return f
 }
 
-// List godoc
-// @Summary      Daftar barang
-// @Description  Daftar barang dengan pagination & filter.
-// @Tags         Barang
-// @Produce      json
-// @Security     BearerAuth
-// @Param        page          query     int     false  "Halaman"     default(1)
-// @Param        limit         query     int     false  "Item per halaman"  default(10)
-// @Param        search        query     string  false  "Kata kunci pencarian"
-// @Param        kategori_id   query     int     false  "Filter kategori"
-// @Param        satuan_id     query     int     false  "Filter satuan"
-// @Param        stok_menipis  query     bool    false  "Hanya tampilkan stok menipis"
-// @Param        status        query     string  false  "aktif untuk hanya barang aktif"
-// @Success      200  {object}  utils.Envelope
-// @Failure      401  {object}  utils.Envelope
-// @Router       /wms-rsd/barang [get]
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := parseListFilter(c)
@@ -119,7 +98,8 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	roleName, _ := c.Locals(constant.CtxRoleName).(string)
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 	if b.ApprovalStatus != constant.ApprovalDisetujui && roleName != constant.RoleSuperAdmin {
-		isOwnSubmission := roleName == constant.RoleAdmin && b.DiajukanOleh != nil && *b.DiajukanOleh == userID
+		isOwnSubmission := (roleName == constant.RoleAdmin || roleName == constant.RoleKaryawan) &&
+			b.DiajukanOleh != nil && *b.DiajukanOleh == userID
 		if !isOwnSubmission {
 			return utils.Fail(c, fiber.StatusNotFound, "Data Data barang tidak ditemukan", nil)
 		}
@@ -154,6 +134,16 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusBadRequest, "kategori atau satuan tidak ditemukan", nil)
 	}
 
+	if req.Stok > 0 {
+		if req.StokGudangID == 0 {
+			return utils.Fail(c, fiber.StatusBadRequest,
+				"stok awal diisi tapi gudang tujuannya belum dipilih — pilih gudang supaya stok ini tercatat di lokasi yang benar", nil)
+		}
+		if _, err := h.gudangRepo.FindGudangByID(req.StokGudangID); err != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "gudang tujuan stok awal tidak ditemukan", nil)
+		}
+	}
+
 	b := &model.Barang{
 		KodeBarang:   req.KodeBarang,
 		Nama:         req.Nama,
@@ -165,16 +155,13 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 		BeratGram:    req.BeratGram,
 		IsActive:     true,
 		IsSerialized: req.IsSerialized,
+		Merek:        req.Merek,
+		Tipe:         req.Tipe,
 		Deskripsi:    req.Deskripsi,
 	}
 
-	// --- Alur persetujuan (lihat model.Barang.ApprovalStatus) ---
-	// Barang yang dibuat admin TIDAK langsung aktif — menunggu Approve/Reject
-	// dari super_admin dulu. super_admin membuat barang langsung disetujui
-	// (nilai default kolom). Karyawan tetap memakai izin "tambah" biasa dari
-	// matrix (lihat RegisterRoutes) — belum ada gerbang tambahan di sini.
 	roleName, _ := c.Locals(constant.CtxRoleName).(string)
-	if roleName == constant.RoleAdmin {
+	if roleName == constant.RoleAdmin || roleName == constant.RoleKaryawan {
 		userID, _ := c.Locals(constant.CtxUserID).(uint)
 		b.ApprovalStatus = constant.ApprovalMenunggu
 		b.DiajukanOleh = &userID
@@ -183,14 +170,24 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(b); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat barang", nil)
 	}
+	if req.Stok > 0 && req.StokGudangID != 0 {
+		if err := h.repo.SetStokGudangAwal(b.ID, req.StokGudangID, req.Stok); err != nil {
+
+			return utils.Fail(c, fiber.StatusInternalServerError,
+				"barang berhasil dibuat, TAPI gagal mencatat stok awal ke gudang tujuan — buka Ubah Barang untuk mengisi ulang", nil)
+		}
+	}
 	msg := "barang berhasil dibuat"
 	if b.ApprovalStatus == constant.ApprovalMenunggu {
 		msg = "barang berhasil diajukan, menunggu persetujuan super admin"
+		notification.Notify(h.notifRepo, "barang",
+			"Pengajuan Barang Baru",
+			fmt.Sprintf("%s (%s) diajukan, menunggu pengecekan fisik & persetujuan.", b.Nama, b.KodeBarang),
+			"/kelola-barang", nil, constant.RoleSuperAdmin)
 	}
 	return utils.Created(c, msg, b)
 }
 
-// Update PUT /barang/:id
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -230,6 +227,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	b.Stok = req.Stok
 	b.BeratGram = req.BeratGram
 	b.StokMinimum = req.StokMinimum
+
+	b.IsSerialized = req.IsSerialized
+	b.Merek = req.Merek
+	b.Tipe = req.Tipe
 	b.Deskripsi = req.Deskripsi
 	if err := h.repo.Update(b); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal memperbarui barang", nil)
@@ -260,11 +261,6 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	return utils.OK(c, "barang berhasil dihapus", nil)
 }
 
-// Protect PATCH /barang/:id/protect — aksi "Protect" di action bar tabel.
-// HANYA super_admin (lihat RegisterRoutes). Saat dikunci: barang tetap
-// terlihat di daftar untuk semua role, tapi field sensitif (harga beli,
-// deskripsi) disamarkan untuk karyawan, dan Update/Delete ditolak sampai
-// dibuka kuncinya lagi.
 func (h *Controller) Protect(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -285,10 +281,15 @@ func (h *Controller) Protect(c *fiber.Ctx) error {
 	return utils.OK(c, "status proteksi berhasil diubah", b)
 }
 
-// Approve PATCH /barang/:id/approve — super_admin menyetujui pengajuan
-// barang yang dibuat admin (lihat model.Barang.ApprovalStatus). Setelah
-// disetujui, barang langsung tampil normal untuk semua role termasuk
-// karyawan.
+func bisaMemprosesApproval(c *fiber.Ctx, b *model.Barang) bool {
+	roleName, _ := c.Locals(constant.CtxRoleName).(string)
+	if roleName == constant.RoleSuperAdmin {
+		return true
+	}
+	userID, _ := c.Locals(constant.CtxUserID).(uint)
+	return roleName == constant.RoleAdmin && b.DidelegasikanKe != nil && *b.DidelegasikanKe == userID
+}
+
 func (h *Controller) Approve(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -297,6 +298,9 @@ func (h *Controller) Approve(c *fiber.Ctx) error {
 	b, err := h.repo.FindByID(id)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "Data barang tidak ditemukan", nil)
+	}
+	if !bisaMemprosesApproval(c, b) {
+		return utils.Fail(c, fiber.StatusForbidden, "kamu tidak berwenang memproses pengajuan ini — hanya super admin atau admin yang didelegasikan khusus baris ini", nil)
 	}
 	if b.ApprovalStatus != constant.ApprovalMenunggu {
 		return utils.Fail(c, fiber.StatusConflict, "barang ini tidak sedang menunggu persetujuan", nil)
@@ -312,8 +316,6 @@ func (h *Controller) Approve(c *fiber.Ctx) error {
 	return utils.OK(c, "barang berhasil disetujui", b)
 }
 
-// Reject PATCH /barang/:id/reject — super_admin menolak pengajuan barang
-// dari admin, disertai catatan alasan penolakan.
 func (h *Controller) Reject(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -326,6 +328,9 @@ func (h *Controller) Reject(c *fiber.Ctx) error {
 	b, err := h.repo.FindByID(id)
 	if err != nil {
 		return utils.Fail(c, fiber.StatusNotFound, "Data barang tidak ditemukan", nil)
+	}
+	if !bisaMemprosesApproval(c, b) {
+		return utils.Fail(c, fiber.StatusForbidden, "kamu tidak berwenang memproses pengajuan ini — hanya super admin atau admin yang didelegasikan khusus baris ini", nil)
 	}
 	if b.ApprovalStatus != constant.ApprovalMenunggu {
 		return utils.Fail(c, fiber.StatusConflict, "barang ini tidak sedang menunggu persetujuan", nil)
@@ -340,6 +345,42 @@ func (h *Controller) Reject(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menolak barang", nil)
 	}
 	return utils.OK(c, "barang berhasil ditolak", b)
+}
+
+func (h *Controller) Delegasikan(c *fiber.Ctx) error {
+	id, err := parseIDParam(c)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "id barang tidak valid", nil)
+	}
+	var req DelegasiRequest
+	if !utils.ParseAndValidate(c, &req) {
+		return nil
+	}
+	b, err := h.repo.FindByID(id)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusNotFound, "Data barang tidak ditemukan", nil)
+	}
+	if b.ApprovalStatus != constant.ApprovalMenunggu {
+		return utils.Fail(c, fiber.StatusConflict, "barang ini tidak sedang menunggu persetujuan — tidak perlu didelegasikan", nil)
+	}
+	target, err := h.usersRepo.FindByID(req.UserID)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusBadRequest, "user tujuan delegasi tidak ditemukan", nil)
+	}
+	targetRole, err := h.roleRepo.FindByID(target.RoleID)
+	if err != nil || targetRole.Name != constant.RoleAdmin {
+		return utils.Fail(c, fiber.StatusUnprocessableEntity, "delegasi hanya bisa ke user dengan role admin", nil)
+	}
+	b.DidelegasikanKe = &req.UserID
+	if err := h.repo.Update(b); err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mendelegasikan pengajuan", nil)
+	}
+	notification.Notify(h.notifRepo, "barang",
+		"Pengajuan Barang Didelegasikan Kepadamu",
+		fmt.Sprintf("%s (%s) menunggu pengecekan fisik & persetujuanmu.", b.Nama, b.KodeBarang),
+		"/kelola-barang", &req.UserID, "")
+	updated, _ := h.repo.FindByID(b.ID)
+	return utils.OK(c, "pengajuan berhasil didelegasikan", updated)
 }
 
 func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
@@ -407,6 +448,109 @@ func (h *Controller) Summary(c *fiber.Ctx) error {
 	})
 }
 
+func (h *Controller) RingkasanStok(c *fiber.Ctx) error {
+	rows, err := barangstokgudang.ListAll(h.db)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal mengambil ringkasan stok", nil)
+	}
+	out := make([]RingkasanStokRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, RingkasanStokRow{
+			BarangID: r.BarangID, KodeBarang: r.KodeBarang, NamaBarang: r.NamaBarang,
+			GudangID: r.GudangID, NamaGudang: r.NamaGudang, Stok: r.Stok,
+		})
+	}
+	return utils.OK(c, "ringkasan stok berhasil diambil", out)
+}
+
+func (h *Controller) NextSKU(c *fiber.Ctx) error {
+	prefix := "BRG"
+	if kategoriIDStr := c.Query("kategori_id"); kategoriIDStr != "" {
+		kategoriID, err := strconv.ParseUint(kategoriIDStr, 10, 64)
+		if err == nil {
+			if kat, err := h.gudangRepo.FindKategoriByID(uint(kategoriID)); err == nil {
+				prefix = derivePrefixFromName(kat.Nama)
+			}
+		}
+	}
+	if tipe := c.Query("tipe"); tipe != "" {
+		if tipePrefix := derivePrefixFromName(tipe); tipePrefix != "BRG" {
+			prefix = prefix + "-" + tipePrefix
+		}
+	}
+	if merek := c.Query("merek"); merek != "" {
+		if merekPrefix := derivePrefixFromName(merek); merekPrefix != "BRG" {
+			prefix = prefix + "-" + merekPrefix
+		}
+	}
+	if beratGramStr := c.Query("berat_gram"); beratGramStr != "" {
+		if beratGram, err := strconv.Atoi(beratGramStr); err == nil {
+			if ukuran := deriveUkuranFromBerat(&beratGram); ukuran != "" {
+				prefix = prefix + "-" + ukuran
+			}
+		}
+	}
+
+	nomor, err := h.repo.NextSKUNumber(prefix)
+	if err != nil {
+		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat saran SKU", nil)
+	}
+	sku := fmt.Sprintf("%s-%04d", prefix, nomor)
+	return utils.OK(c, "saran SKU berhasil dibuat", NextSKUResponse{SKU: sku})
+}
+
+func (h *Controller) CheckSKU(c *fiber.Ctx) error {
+	sku := strings.TrimSpace(c.Query("sku"))
+	if sku == "" {
+		return utils.OK(c, "sku kosong", CheckSKUResponse{Available: false})
+	}
+	existing, err := h.repo.FindByKode(sku)
+	if err != nil {
+		return utils.OK(c, "sku tersedia", CheckSKUResponse{Available: true})
+	}
+	if editIDStr := c.Query("exclude_id"); editIDStr != "" {
+		if editID, perr := strconv.ParseUint(editIDStr, 10, 64); perr == nil && existing.ID == uint(editID) {
+			return utils.OK(c, "sku tersedia (milik barang yang sedang diedit)", CheckSKUResponse{Available: true})
+		}
+	}
+	return utils.OK(c, "sku sudah dipakai", CheckSKUResponse{Available: false})
+}
+
+func derivePrefixFromName(nama string) string {
+	var letters []rune
+	for _, r := range strings.ToUpper(nama) {
+		if r >= 'A' && r <= 'Z' {
+			letters = append(letters, r)
+			if len(letters) == 3 {
+				break
+			}
+		}
+	}
+	if len(letters) == 0 {
+		return "BRG"
+	}
+	return string(letters)
+}
+
+const (
+	ukuranSmallMaxGram  = 1000
+	ukuranMediumMaxGram = 5000
+)
+
+func deriveUkuranFromBerat(beratGram *int) string {
+	if beratGram == nil {
+		return ""
+	}
+	switch {
+	case *beratGram < ukuranSmallMaxGram:
+		return "S"
+	case *beratGram <= ukuranMediumMaxGram:
+		return "M"
+	default:
+		return "L"
+	}
+}
+
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/barang", middleware.JWTAuth(h.jwtSvc))
 
@@ -414,11 +558,13 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
 	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
-	// karyawan TIDAK PERNAH boleh menghapus data apa pun, meski matrix
-	// izin "edit" untuknya diaktifkan untuk modul ini — Delete WAJIB staff.
+
 	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 
 	g.Get("/summary", view, h.Summary)
+	g.Get("/ringkasan-stok", view, h.RingkasanStok)
+	g.Get("/next-sku", view, h.NextSKU)
+	g.Get("/check-sku", view, h.CheckSKU)
 	g.Get("/", view, h.List)
 	g.Get("/:id", view, h.Detail)
 	g.Post("/", tambah, h.Create)
@@ -426,7 +572,8 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Delete("/:id", onlyStaff, edit, h.Delete)
 	g.Patch("/:id/status", edit, h.UpdateStatus)
 	g.Patch("/:id/adjust", edit, h.AdjustStok)
-	g.Patch("/:id/protect", onlySuperAdmin, h.Protect) // Protect — khusus super admin
-	g.Patch("/:id/approve", onlySuperAdmin, h.Approve) // Setujui pengajuan admin
-	g.Patch("/:id/reject", onlySuperAdmin, h.Reject)   // Tolak pengajuan admin
+	g.Patch("/:id/protect", onlySuperAdmin, h.Protect)
+	g.Patch("/:id/approve", onlyStaff, h.Approve)
+	g.Patch("/:id/reject", onlyStaff, h.Reject)
+	g.Patch("/:id/delegasikan", onlySuperAdmin, h.Delegasikan)
 }

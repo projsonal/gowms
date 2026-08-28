@@ -92,9 +92,6 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Get("/version", h.Version)
 	g.Get("/changelog", h.Changelog)
 
-	// Cek Update/Update Sekarang (Settings > Sistem) — wajib login;
-	// TriggerUpdate (POST /app/update) khusus super_admin karena
-	// benar-benar mengganti binary yang sedang berjalan di server.
 	g.Get("/check-update", middleware.JWTAuth(h.jwtSvc), h.CheckUpdate)
 	g.Get("/update-status", middleware.JWTAuth(h.jwtSvc), h.UpdateStatus)
 	g.Post("/update", middleware.JWTAuth(h.jwtSvc), middleware.RequireRole(constant.RoleSuperAdmin), h.TriggerUpdate)

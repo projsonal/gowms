@@ -23,7 +23,6 @@ func parseIDParam(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
-// List GET /cod?page=&limit=&search=&status=
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	f := codRepo.Filter{Status: c.Query("status", "")}
@@ -35,7 +34,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar transaksi COD berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Summary GET /cod/summary
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
 	if err != nil {
@@ -55,7 +53,6 @@ func parseTanggal(raw string) (time.Time, error) {
 	return time.Parse("2006-01-02", raw)
 }
 
-// Create POST /cod — aksi "Add"/"Insert" di action bar tabel.
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req CodRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -79,7 +76,6 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	return utils.Created(c, "transaksi COD berhasil dibuat", row)
 }
 
-// Update PUT /cod/:id — aksi "Change" di action bar tabel.
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -115,10 +111,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, "transaksi COD berhasil diperbarui", row)
 }
 
-// Delete DELETE /cod/:id — aksi "Delete" di action bar tabel. Rute ini
-// digerbang GANDA (lihat RegisterRoutes): RequireRole(super_admin, admin)
-// DULU (karyawan langsung ditolak di sini, TIDAK peduli izin matrix-nya),
-// BARU RequirePermission(edit) (admin tetap butuh izin dari super_admin).
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -138,10 +130,6 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	return utils.OK(c, "transaksi COD berhasil dihapus", nil)
 }
 
-// Protect PATCH /cod/:id/protect — aksi "Protect" di action bar tabel.
-// HANYA super_admin (lihat RegisterRoutes, digerbang RequireRole langsung
-// tanpa lewat matrix permission sama sekali — ini sengaja tidak bisa
-// didelegasikan ke admin lewat matrix).
 func (h *Controller) Protect(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -168,16 +156,14 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)
 	tambah := middleware.RequirePermission(h.roleRepo, Module, constant.ActionTambah)
 	edit := middleware.RequirePermission(h.roleRepo, Module, constant.ActionEdit)
-	// Delete & Protect TIDAK bisa didelegasikan bebas lewat matrix ke
-	// karyawan — role-gate dulu sebelum cek matrix, sesuai spesifikasi:
-	// "karyawan hanya bisa add & change", "protect khusus super admin".
+
 	onlyStaff := middleware.RequireRole(constant.RoleSuperAdmin, constant.RoleAdmin)
 	onlySuperAdmin := middleware.RequireRole(constant.RoleSuperAdmin)
 
 	g.Get("/summary", view, h.Summary)
 	g.Get("/", view, h.List)
-	g.Post("/", tambah, h.Create)                      // Add / Insert
-	g.Put("/:id", edit, h.Update)                      // Change
-	g.Delete("/:id", onlyStaff, edit, h.Delete)        // Delete
-	g.Patch("/:id/protect", onlySuperAdmin, h.Protect) // Protect
+	g.Post("/", tambah, h.Create)
+	g.Put("/:id", edit, h.Update)
+	g.Delete("/:id", onlyStaff, edit, h.Delete)
+	g.Patch("/:id/protect", onlySuperAdmin, h.Protect)
 }

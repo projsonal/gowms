@@ -13,15 +13,8 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// otpReplayTTL: seberapa lama sebuah kode OTP yang sudah dipakai tetap
-// diingat oleh totpReplayGuard sebelum boleh dibuang dari memori. Dibuat
-// lebih panjang dari window validasi TOTP supaya kode yang baru saja
-// kedaluwarsa tidak bisa dipakai ulang selagi masih "terlihat" valid oleh
-// clock skew toleransi di VerifyTOTP.
 const otpReplayTTL = 5 * time.Minute
 
-// Controller menangani endpoint HTTP modul Autentikasi (login, register,
-// 2FA, refresh token, dan manajemen sesi).
 type Controller struct {
 	userRepo      users.Repository
 	roleRepo      role.Repository
@@ -48,7 +41,6 @@ type Params struct {
 	Cfg           *config.Config
 }
 
-// New membuat instance Controller Autentikasi.
 func New(p Params) *Controller {
 	return &Controller{
 		userRepo:      p.UserRepo,
@@ -65,8 +57,6 @@ func New(p Params) *Controller {
 	}
 }
 
-// ---- Request DTO ----
-
 type RegisterRequest struct {
 	Username             string `json:"username" validate:"required,min=4,max=50"`
 	Email                string `json:"email" validate:"omitempty,email"`
@@ -74,9 +64,7 @@ type RegisterRequest struct {
 	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
 	FullName             string `json:"full_name" validate:"required"`
 	PhoneNumber          string `json:"phone_number"`
-	// RoleName: hanya dihormati kalau APP_ENV != production (lihat
-	// resolveRegisterRoleName), supaya self-register di production selalu
-	// dipaksa jadi role default (karyawan).
+
 	RoleName      string `json:"role_name"`
 	CaptchaToken  string `json:"captcha_token" validate:"required"`
 	CaptchaAnswer string `json:"captcha_answer" validate:"required"`
@@ -87,10 +75,6 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required,min=6"`
 }
 
-// ResetPasswordRequest — reset password lewat identifier (username/email),
-// diverifikasi lewat checkbox "verify you are human" ala Cloudflare
-// Turnstile (lihat pkg/humancheck) supaya tetap ada perlindungan dari
-// automated abuse tanpa menyuruh user memecahkan captcha gambar.
 type ResetPasswordRequest struct {
 	Identifier      string `json:"identifier" validate:"required"`
 	NewPassword     string `json:"new_password" validate:"required,min=8"`
@@ -115,8 +99,6 @@ type VerifyOTPRequest struct {
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
-
-// ---- Response DTO ----
 
 type UserSummary struct {
 	ID       uint   `json:"id"`
@@ -143,9 +125,6 @@ type SessionListResponse struct {
 	Sessions []SessionInfo `json:"sessions"`
 }
 
-// LoginResponse dipakai untuk hasil Login/Register/RefreshToken/VerifyOTP.
-// Kalau akun punya 2FA aktif, Login hanya mengisi RequireOTP+PendingToken
-// (field lain kosong) sampai VerifyOTP dipanggil.
 type LoginResponse struct {
 	RequireOTP   bool         `json:"require_otp"`
 	PendingToken string       `json:"pending_token,omitempty"`

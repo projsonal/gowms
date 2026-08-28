@@ -8,8 +8,7 @@ import (
 type Filter struct {
 	Status   string
 	GudangID uint
-	// KategoriID memfilter berdasarkan kategori barang di dalam item-item
-	// dokumen barang masuk (join lewat barang_masuk_items -> barang).
+
 	KategoriID uint
 }
 
@@ -21,10 +20,6 @@ type Repository interface {
 	Update(bm *model.BarangMasuk, items []model.BarangMasukItem) error
 	Delete(id uint) error
 
-	// Complete — serials adalah map[BarangMasukItemID][]nomor_seri, HANYA
-	// perlu diisi untuk item yang Barang-nya IsSerialized (lihat
-	// model.BarangSerial). Item barang non-serial cukup kirim map kosong
-	// untuk key tersebut (atau tidak usah diisi sama sekali).
 	Complete(id uint, userID uint, serials map[uint][]string) (*model.BarangMasuk, error)
 	Batalkan(id uint) (*model.BarangMasuk, error)
 

@@ -21,7 +21,7 @@ type TrendPoint struct {
 func (h *Controller) Trend(c *fiber.Ctx) error {
 	db := h.db
 	now := time.Now()
-	// Build 6 months back including current
+
 	months := make([]time.Time, 6)
 	for i := 0; i < 6; i++ {
 		m := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -(5 - i), 0)
@@ -119,18 +119,10 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	var rows []row
 	args := []any{}
 	if !since.IsZero() {
-		// 4 placeholder `?` yang dihasilkan optAnd/optWhere untuk blok
-		// barang_masuk, barang_keluar, stock_opname, dan assets di bawah —
-		// urutannya harus sama dengan urutan blok UNION ALL pada query `q`.
+
 		args = append(args, since, since, since, since)
 	}
-	// Untuk barang_masuk & barang_keluar, karyawan HANYA perlu diberi tahu
-	// saat statusnya sudah "selesai" (disetujui admin/super_admin lewat
-	// endpoint PATCH .../selesai — lihat middleware `edit` di RegisterRoutes,
-	// karyawan biasanya tidak punya izin `edit` sehingga transisi status ini
-	// pasti dilakukan admin/super_admin). Dipakai `completed_at`, BUKAN
-	// `created_at`, supaya notifikasi muncul saat disetujui, bukan saat
-	// pertama kali diinput oleh karyawan.
+
 	q := `
 	  SELECT 'bm-' || bm.id::text AS id, 'Barang Masuk Disetujui' AS title, bm.nomor_penerimaan AS body, 'in_approved' AS kind, bm.completed_at AS created_at
 	  FROM barang_masuk bm
@@ -155,14 +147,11 @@ func (h *Controller) Notifications(c *fiber.Ctx) error {
 	  WHERE b.approval_status = 'disetujui' ` + optAnd(!since.IsZero(), "b.created_at") + `
 	  ORDER BY created_at DESC LIMIT 20
 	`
-	// br.dilaporkan_oleh = ? WAJIB ditaruh SEBELUM parameter `since` lain di
-	// UNION notif barang rusak (urutan placeholder "?" di raw SQL mengikuti
-	// urutan literal dalam teks query, bukan urutan UNION-nya) — makanya
-	// userID disisipkan tepat sebelum since-arg milik blok barang_rusak.
+
 	args = append(args, userID)
 	if !since.IsZero() {
-		args = append(args, since) // since milik blok barang_rusak
-		args = append(args, since) // since milik blok barang baru (UNION paling akhir)
+		args = append(args, since)
+		args = append(args, since)
 	}
 	tx := db.Raw(q, args...).Scan(&rows)
 	if tx.Error != nil {
@@ -190,9 +179,6 @@ func optWhere(with bool) string {
 	return ""
 }
 
-// optAnd sama seperti optWhere, tapi untuk ditambahkan setelah klausa WHERE
-// yang sudah ada (bm.status = 'selesai' dst.) dan bisa memakai kolom lain
-// selain created_at (di sini: completed_at).
 func optAnd(with bool, column string) string {
 	if with {
 		return "AND " + column + " > ?"

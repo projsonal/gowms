@@ -21,15 +21,6 @@ func sanitizeSheetName(title string) string {
 	return title
 }
 
-// aggregateKind menandai kolom mana yang "bisa dihitung" (uang/kuantitas/
-// nama gudang) — dipakai DUA kali: (1) memutuskan kolom mana yang ditulis
-// sebagai ANGKA NATIVE (bukan teks berformat) di writeRows, dan (2)
-// membangun rumus Ringkasan yang merujuk kolom itu di buildSummaryRows.
-// Klasifikasinya SENGAJA disamakan persis dengan computeGenericSummary di
-// internal/controller/laporan/laporan_controller.go (dicocokkan dari nama
-// header, bukan index tetap) — supaya baris Ringkasan yang tampil di
-// Excel selalu menunjuk kolom yang benar walau urutan/isi header laporan
-// beda-beda antar tipe laporan.
 type aggregateKind int
 
 const (
@@ -53,12 +44,6 @@ func classifyColumn(header string) aggregateKind {
 	}
 }
 
-// parseNumericCell membalikkan format tampilan (mis. "Rp 1.234.567",
-// "1.234") balik jadi float64 murni — sel string hasil buildReport (lihat
-// laporan_controller.go) memang sengaja sudah diformat manusiawi untuk
-// PDF/Docx, tapi untuk Excel kita perlu angka NATIVE (bukan teks) supaya
-// bisa dijumlah dengan rumus SUM oleh Excel sendiri, dan supaya user bisa
-// SORT/FILTER kolom itu sebagai angka sungguhan.
 func parseNumericCell(val string) (float64, bool) {
 	cleaned := strings.TrimSpace(val)
 	cleaned = strings.TrimPrefix(cleaned, "Rp")
@@ -126,18 +111,10 @@ func ToExcel(title string, summary [][2]string, headers []string, rows [][]strin
 		return nil, err
 	}
 
-	// Baris tabel (header kolom + data) SELALU dimulai tepat setelah blok
-	// Ringkasan — posisinya dihitung LEBIH DULU (murni aritmetika, belum
-	// benar-benar ditulis) supaya rumus di blok Ringkasan bisa merujuk sel
-	// yang tepat, walau isinya baru ditulis belakangan oleh
-	// writeHeaders/writeRows di bawah. Jumlah baris Ringkasan (kalau ada
-	// kolom uang/kuantitas/gudang) SAMA PERSIS dengan yang dipakai
-	// computeGenericSummary — cuma di sini nilainya rumus, bukan angka
-	// jadi.
 	summaryRows := buildSummaryRows(headers)
 	tableHeaderRow := row
 	if len(summaryRows) > 0 {
-		tableHeaderRow = row + 1 + len(summaryRows) + 1 // "Ringkasan" + N baris + 1 baris kosong
+		tableHeaderRow = row + 1 + len(summaryRows) + 1
 	}
 	dataStartRow := tableHeaderRow + 1
 	dataEndRow := dataStartRow + len(rows) - 1
@@ -201,20 +178,12 @@ func writeHeader(f *excelize.File, sheet, title string, titleStyle int) (int, er
 	return row + 2, nil
 }
 
-// summaryRowDef — satu baris Ringkasan yang AKAN ditulis sebagai rumus
-// Excel, bukan angka jadi. `formula` SUDAH termasuk tanda "=" di depan.
 type summaryRowDef struct {
 	label   string
-	kind    aggregateKind // menentukan style angka yang dipakai (lihat writeSummaryFormulas)
+	kind    aggregateKind
 	formula func(dataStartRow, dataEndRow int) string
 }
 
-// buildSummaryRows menyusun daftar baris Ringkasan dari nama-nama header
-// — SATU per kolom yang tergolong bisa dihitung (lihat classifyColumn),
-// plus satu baris "Total Baris" di paling atas. Urutan & label SENGAJA
-// disamakan dengan computeGenericSummary (laporan_controller.go) supaya
-// tampilan Ringkasan di Excel konsisten dengan PDF/Docx — bedanya cuma di
-// sini nilainya rumus hidup, bukan angka yang sudah dihitung Go.
 func buildSummaryRows(headers []string) []summaryRowDef {
 	out := []summaryRowDef{
 		{
@@ -249,10 +218,7 @@ func buildSummaryRows(headers []string) []summaryRowDef {
 				},
 			})
 		case aggregateGudang:
-			// Hitung JUMLAH NILAI UNIK (bukan cuma jumlah baris terisi) —
-			// trik SUMPRODUCT/COUNTIF klasik, kompatibel di Excel versi
-			// lama & LibreOffice (tidak bergantung fungsi UNIQUE() yang
-			// cuma ada di Excel 365+).
+
 			out = append(out, summaryRowDef{
 				label: "Gudang Terlibat",
 				kind:  aggregateNone,
@@ -330,14 +296,6 @@ func writeHeaders(f *excelize.File, sheet string, headers []string, headerRow in
 	return nil
 }
 
-// writeRows menulis tiap sel data — kolom yang tergolong bisa dihitung
-// (colKinds, lihat classifyColumn) ditulis sebagai ANGKA NATIVE + style
-// format angka/Rupiah (supaya rumus SUM di Ringkasan bisa menjumlahkannya
-// dan tampilannya tetap rapi "Rp 1.234.567"/"1.234"), kolom lain tetap
-// teks apa adanya seperti sebelumnya. Kalau sebuah sel di kolom
-// "seharusnya angka" ternyata gagal di-parse (mis. "-" untuk data
-// kosong), ditulis sebagai teks biasa alih-alih memaksa 0 yang bisa
-// menyesatkan.
 type rowCellStyles struct {
 	currency int
 	qty      int
@@ -398,7 +356,7 @@ func addNativeChart(f *excelize.File, sheet string, chart *ChartData) error {
 	if chart == nil || len(chart.Values) == 0 {
 		return nil
 	}
-	const helperCol = "AA" // jauh dari kolom data laporan (laporan di sini tidak pernah >15 kolom)
+	const helperCol = "AA"
 	helperColLabel := "AB"
 
 	if err := f.SetCellValue(sheet, helperCol+"1", "(Data Grafik — "+chart.Title+")"); err != nil {

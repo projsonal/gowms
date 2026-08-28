@@ -42,7 +42,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar tugas berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /tasks/:id
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -61,8 +60,6 @@ func (h *Controller) Detail(c *fiber.Ctx) error {
 	return utils.OK(c, "detail tugas berhasil diambil", t)
 }
 
-// Summary GET /tasks/summary — kartu ringkasan, dihitung dari sudut
-// pandang requester (karyawan lihat ringkasan tugasnya sendiri saja).
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	roleName, _ := c.Locals(constant.CtxRoleName).(string)
 	var assignedTo uint
@@ -83,8 +80,6 @@ func (h *Controller) Summary(c *fiber.Ctx) error {
 	})
 }
 
-// Create POST /tasks — aksi "Add" di action bar tabel. HANYA super_admin
-// & admin (lihat RegisterRoutes) yang boleh menugaskan tugas baru.
 func (h *Controller) Create(c *fiber.Ctx) error {
 	var req TaskRequest
 	if !utils.ParseAndValidate(c, &req) {
@@ -112,7 +107,6 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	return utils.Created(c, "tugas berhasil dibuat dan ditugaskan", created)
 }
 
-// Update PUT /tasks/:id
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -143,9 +137,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, "tugas berhasil diperbarui", t)
 }
 
-// UpdateStatus PATCH /tasks/:id/status — dipakai karyawan menandai tugas
-// miliknya "proses"/"selesai", ATAU admin/super_admin mengubah status
-// tugas siapa pun.
 func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -179,7 +170,6 @@ func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	return utils.OK(c, "status tugas berhasil diperbarui", t)
 }
 
-// Delete DELETE /tasks/:id — HANYA super_admin & admin.
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {

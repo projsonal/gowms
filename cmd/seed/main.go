@@ -118,9 +118,6 @@ func findOrCreateGudang(db *gorm.DB, nama, alamat string) model.Gudang {
 	return g
 }
 
-// findOrCreateGudangDenganKode sama seperti findOrCreateGudang, tapi juga
-// mengisi/menyinkronkan Kode gudang (prefix label RSD aset, mis. "BBU",
-// "MAHANG" — lihat internal/controller/asset Create()).
 func findOrCreateGudangDenganKode(db *gorm.DB, nama, alamat, kode string) model.Gudang {
 	var g model.Gudang
 	if db.Where("nama = ?", nama).First(&g).Error == gorm.ErrRecordNotFound {

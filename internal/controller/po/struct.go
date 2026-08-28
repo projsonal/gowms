@@ -3,7 +3,7 @@ package purchase_order
 import (
 	"time"
 
-	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notifikasi"
 	poRepo "github.com/projsonal/gowms/internal/repositories/po"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	supplierRepo "github.com/projsonal/gowms/internal/repositories/supplier"
@@ -22,8 +22,6 @@ func New(repo poRepo.Repository, supplierRepo supplierRepo.Repository, roleRepo 
 	return &Controller{repo: repo, supplierRepo: supplierRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, notifRepo: notifRepo}
 }
 
-// ---- DTO ----
-
 type ItemRequest struct {
 	BarangID    uint  `json:"barang_id" validate:"required"`
 	QtyPesan    int   `json:"qty_pesan" validate:"required,min=1"`
@@ -32,8 +30,7 @@ type ItemRequest struct {
 
 type PORequest struct {
 	SupplierID uint `json:"supplier_id" validate:"required"`
-	// TanggalPO: string "YYYY-MM-DD" — lihat catatan lengkap di
-	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal.
+
 	TanggalPO        string        `json:"tanggal_po" validate:"required"`
 	CatatanPengajuan string        `json:"catatan_pengajuan" validate:"max=255"`
 	Items            []ItemRequest `json:"items" validate:"required,min=1,dive"`
@@ -48,8 +45,6 @@ type SetujuiTolakRequest struct {
 	Catatan string `json:"catatan" validate:"max=255"`
 }
 
-// ProtectRequest — form aksi "Protect" di action bar tabel (khusus
-// super_admin). Sama pola dengan Gudang/Barang/Supplier.
 type ProtectRequest struct {
 	IsProtected *bool `json:"is_protected" validate:"required"`
 }

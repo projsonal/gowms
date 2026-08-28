@@ -33,7 +33,6 @@ func handleCreateOrUpdateError(c *fiber.Ctx, action string, err error) error {
 	return utils.Fail(c, fiber.StatusInternalServerError, fmt.Sprintf("gagal %s aset", action), nil)
 }
 
-// List GET
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_id", "0"), 10, 64)
@@ -49,7 +48,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar aset berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -99,11 +97,11 @@ func (h *Controller) MapPoints(c *fiber.Ctx) error {
 		out = append(out, MapPoint{
 			ID: p.ID, Nama: p.Nama, JenisAset: p.JenisAset, LabelRSD: p.LabelRSD,
 			Latitude: p.Latitude, Longitude: p.Longitude, Status: p.Status,
-			IPAddress: p.IPAddress, PingStatus: p.PingStatus,
 			GudangID: p.GudangID, GudangNama: p.GudangNama, GudangKode: p.GudangKode, GudangTipe: p.GudangTipe,
 			GudangLatitude: p.GudangLatitude, GudangLongitude: p.GudangLongitude,
 			ParentAssetID: p.ParentAssetID, ParentLatitude: p.ParentLatitude, ParentLongitude: p.ParentLongitude,
 			JumlahPort: p.JumlahPort, PortTerisi: p.PortTerisi,
+			Merek: p.Merek, Tipe: p.Tipe, KodeBarang: p.KodeBarang,
 		})
 	}
 	return utils.OK(c, "titik peta aset berhasil diambil", out)
@@ -129,17 +127,23 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 				fmt.Sprintf("%s tidak bisa berinduk ke %s — cek urutan hierarki jaringan (OLT -> ODC -> ODP -> ONT)", req.JenisAset, parent.JenisAset), nil)
 		}
 	}
+	if req.BarangID != nil {
+		if _, berr := h.barangRepo.FindByID(*req.BarangID); berr != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "kode barang tidak ditemukan", nil)
+		}
+	}
 
 	a := &model.Asset{
 		Nama:          req.Nama,
 		JenisAset:     req.JenisAset,
 		GudangID:      req.GudangID,
 		Keterangan:    req.Keterangan,
-		IPAddress:     req.IPAddress,
+		Merek:         req.Merek,
+		Tipe:          req.Tipe,
 		ParentAssetID: req.ParentAssetID,
 		JumlahPort:    req.JumlahPort,
+		BarangID:      req.BarangID,
 		Status:        "aktif",
-		PingStatus:    "unknown",
 	}
 
 	if model.JenisAsetPunyaKoordinat(req.JenisAset) {
@@ -201,15 +205,45 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 				fmt.Sprintf("%s tidak bisa berinduk ke %s — cek urutan hierarki jaringan (OLT -> ODC -> ODP -> ONT)", a.JenisAset, parent.JenisAset), nil)
 		}
 	}
+	if req.BarangID != nil {
+		if _, berr := h.barangRepo.FindByID(*req.BarangID); berr != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "kode barang tidak ditemukan", nil)
+		}
+	}
 
 	oldParentID := a.ParentAssetID
 	oldLat, oldLng := a.Latitude, a.Longitude
+	oldGudangID := a.GudangID
+	oldLabelRSD := a.LabelRSD
 
 	a.Nama = req.Nama
 	a.Keterangan = req.Keterangan
-	a.IPAddress = req.IPAddress
+	a.Merek = req.Merek
+	a.Tipe = req.Tipe
 	a.ParentAssetID = req.ParentAssetID
 	a.JumlahPort = req.JumlahPort
+	a.BarangID = req.BarangID
+
+	if req.GudangID != 0 && req.GudangID != a.GudangID {
+		newGudang, gerr := h.gudangRepo.FindGudangByID(req.GudangID)
+		if gerr != nil {
+			return utils.Fail(c, fiber.StatusBadRequest, "gudang tidak ditemukan", nil)
+		}
+		a.GudangID = req.GudangID
+
+		if model.JenisAsetPunyaKoordinat(a.JenisAset) {
+			if newGudang.Kode == "" {
+				return utils.Fail(c, fiber.StatusUnprocessableEntity,
+					"gudang tujuan belum punya kode — isi kode gudang dulu sebelum memindahkan aset ke sana", nil)
+			}
+			nomor, nerr := h.repo.NextRSDNumber(req.GudangID)
+			if nerr != nil {
+				return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat label RSD baru", nil)
+			}
+			a.LabelRSD = fmt.Sprintf("%s-RSD-%04d", newGudang.Kode, nomor)
+		}
+	}
+
 	if model.JenisAsetPunyaKoordinat(a.JenisAset) {
 		if req.Latitude == nil || req.Longitude == nil {
 			return utils.Fail(c, fiber.StatusUnprocessableEntity,
@@ -230,6 +264,10 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 			fmt.Sprintf("%s, %s", ptrFloatLabel(oldLat), ptrFloatLabel(oldLng)),
 			fmt.Sprintf("%s, %s", ptrFloatLabel(a.Latitude), ptrFloatLabel(a.Longitude)),
 			"Titik koordinat lokasi diubah")
+	}
+	if oldGudangID != a.GudangID {
+		h.logHistory(c, a.ID, "gudang", oldLabelRSD, a.LabelRSD,
+			fmt.Sprintf("Aset dipindahkan ke gudang lain, label RSD diregenerasi (gudang #%d -> #%d)", oldGudangID, a.GudangID))
 	}
 	return utils.OK(c, "aset berhasil diperbarui", a)
 }
@@ -262,7 +300,6 @@ func ptrFloatLabel(v *float64) string {
 	return fmt.Sprintf("%.6f", *v)
 }
 
-// UpdateStatus
 func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -288,7 +325,6 @@ func (h *Controller) UpdateStatus(c *fiber.Ctx) error {
 	return utils.OK(c, "status aset berhasil diperbarui", a)
 }
 
-// Delete
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -320,8 +356,6 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Put("/:id", edit, onlyStaff, h.Update)
 	g.Patch("/:id/status", edit, h.UpdateStatus)
 
-	g.Post("/ping", edit, h.PingAll)
-	g.Post("/:id/ping", edit, h.Ping)
 	g.Get("/:id/port", view, h.ListPorts)
 	g.Put("/:id/port/:nomor", edit, h.SetPort)
 	g.Delete("/:id/port/:nomor", edit, h.ClearPort)

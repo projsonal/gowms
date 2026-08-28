@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/projsonal/gowms/internal/model"
+	"github.com/projsonal/gowms/internal/repositories/barangstokgudang"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -33,7 +34,9 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.StockOpna
 		return nil, 0, err
 	}
 	if err := p.Apply(q.Session(&gorm.Session{}).
-		Preload("Gudang").Preload("Items").Preload("Items.Barang").Order("id desc")).
+		Preload("Gudang").Preload("Items").
+		Preload("Items.Barang", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
+		Order("id desc")).
 		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
@@ -42,7 +45,10 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.StockOpna
 
 func (r *repository) FindByID(id uint) (*model.StockOpname, error) {
 	var so model.StockOpname
-	err := r.db.Preload("Gudang").Preload("Items").Preload("Items.Barang").Preload("Items.Rak").First(&so, id).Error
+
+	err := r.db.Preload("Gudang").Preload("Items").
+		Preload("Items.Barang", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
+		First(&so, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -57,21 +63,20 @@ func (r *repository) FindByNomor(nomor string) (*model.StockOpname, error) {
 	return &so, nil
 }
 
-// buildItems mengubah ItemInput (dari request client) jadi StockOpnameItem
-// siap simpan, dengan StokSistem di-snapshot LANGSUNG dari Barang.Stok saat
-// ini (bukan dari input client) supaya tidak bisa dipalsukan.
-func buildItems(tx *gorm.DB, soID uint, inputs []ItemInput) ([]model.StockOpnameItem, error) {
+func buildItems(tx *gorm.DB, soID uint, gudangID uint, inputs []ItemInput) ([]model.StockOpnameItem, error) {
 	items := make([]model.StockOpnameItem, 0, len(inputs))
 	for _, in := range inputs {
-		var b model.Barang
-		if err := tx.First(&b, in.BarangID).Error; err != nil {
+		if err := tx.First(&model.Barang{}, in.BarangID).Error; err != nil {
+			return nil, err
+		}
+		stokSistem, err := barangstokgudang.GetStokGudangTx(tx, in.BarangID, gudangID)
+		if err != nil {
 			return nil, err
 		}
 		item := model.StockOpnameItem{
 			StockOpnameID: soID,
 			BarangID:      in.BarangID,
-			RakID:         in.RakID,
-			StokSistem:    b.Stok,
+			StokSistem:    stokSistem,
 			StokFisik:     in.StokFisik,
 			Catatan:       in.Catatan,
 		}
@@ -86,7 +91,7 @@ func (r *repository) Create(so *model.StockOpname, inputs []ItemInput) error {
 		if err := tx.Create(so).Error; err != nil {
 			return err
 		}
-		items, err := buildItems(tx, so.ID, inputs)
+		items, err := buildItems(tx, so.ID, so.GudangID, inputs)
 		if err != nil {
 			return err
 		}
@@ -105,7 +110,7 @@ func (r *repository) Update(so *model.StockOpname, inputs []ItemInput) error {
 		if err := tx.Where("stock_opname_id = ?", so.ID).Delete(&model.StockOpnameItem{}).Error; err != nil {
 			return err
 		}
-		items, err := buildItems(tx, so.ID, inputs)
+		items, err := buildItems(tx, so.ID, so.GudangID, inputs)
 		if err != nil {
 			return err
 		}
@@ -127,10 +132,6 @@ func (r *repository) Delete(id uint) error {
 	})
 }
 
-// Complete menerapkan hasil hitung fisik ke stok sesungguhnya: Barang.Stok
-// di-SET langsung ke StokFisik (bukan ditambah/dikurangi) karena StokFisik
-// sudah merupakan angka akhir hasil hitung, dan Rak.Terisi disesuaikan
-// sebesar Selisih (kalau item terkait rak tertentu).
 func (r *repository) Complete(id uint, userID uint) (*model.StockOpname, error) {
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var so model.StockOpname
@@ -145,14 +146,11 @@ func (r *repository) Complete(id uint, userID uint) (*model.StockOpname, error) 
 			if item.Selisih == 0 {
 				continue
 			}
-			if err := tx.Model(&model.Barang{}).Where("id = ?", item.BarangID).
-				Update("stok", item.StokFisik).Error; err != nil {
+			if err := barangstokgudang.SetStokGudangTx(tx, item.BarangID, so.GudangID, item.StokFisik); err != nil {
 				return err
 			}
-			if item.RakID != nil {
-				if err := adjustRak(tx, *item.RakID, item.Selisih); err != nil {
-					return err
-				}
+			if err := barangstokgudang.SyncBarangStokTotalTx(tx, item.BarangID); err != nil {
+				return err
 			}
 		}
 
@@ -167,20 +165,6 @@ func (r *repository) Complete(id uint, userID uint) (*model.StockOpname, error) 
 		return nil, err
 	}
 	return r.FindByID(id)
-}
-
-// adjustRak lihat dokumentasi di package barang_masuk.
-func adjustRak(tx *gorm.DB, rakID uint, delta int) error {
-	var rak model.Rak
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&rak, rakID).Error; err != nil {
-		return err
-	}
-	rak.Terisi += delta
-	if rak.Terisi < 0 {
-		rak.Terisi = 0
-	}
-	rak.RecalculateStatus()
-	return tx.Save(&rak).Error
 }
 
 func (r *repository) Batalkan(id uint) (*model.StockOpname, error) {

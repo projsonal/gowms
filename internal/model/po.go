@@ -4,7 +4,7 @@ import "time"
 
 type PurchaseOrder struct {
 	ID               uint                `json:"id" gorm:"primaryKey"`
-	NomorPO          string              `json:"nomor_po" gorm:"size:30;uniqueIndex;not null"` // PO-2026-0001
+	NomorPO          string              `json:"nomor_po" gorm:"size:30;uniqueIndex;not null"`
 	SupplierID       uint                `json:"supplier_id" gorm:"not null;index"`
 	Supplier         *Supplier           `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
 	Status           string              `json:"status" gorm:"size:20;not null;default:'draft';index"`
@@ -16,7 +16,7 @@ type PurchaseOrder struct {
 	DisetujuiOleh    *uint               `json:"disetujui_oleh"`
 	DisetujuiAt      *time.Time          `json:"disetujui_at"`
 	TotalEstimasi    int64               `json:"total_estimasi" gorm:"not null;default:0"`
-	IsProtected      bool                `json:"is_protected" gorm:"not null;default:false"` // dikunci super_admin
+	IsProtected      bool                `json:"is_protected" gorm:"not null;default:false"`
 	Items            []PurchaseOrderItem `json:"items,omitempty" gorm:"foreignKey:PurchaseOrderID"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`
@@ -24,9 +24,6 @@ type PurchaseOrder struct {
 
 func (PurchaseOrder) TableName() string { return "purchase_orders" }
 
-// IsFullyReceived mengecek apakah seluruh item PO sudah diterima penuh
-// (QtyDiterima >= QtyPesan untuk semua baris) — dipakai repository untuk
-// menentukan kapan PO otomatis pindah status ke "selesai".
 func (po *PurchaseOrder) IsFullyReceived() bool {
 	if len(po.Items) == 0 {
 		return false
@@ -52,9 +49,6 @@ type PurchaseOrderItem struct {
 
 func (PurchaseOrderItem) TableName() string { return "purchase_order_items" }
 
-// SisaDiterima menghitung berapa unit yang masih perlu diterima dari item
-// PO ini — dipakai Barang Masuk untuk membatasi qty yang boleh direalisasi
-// supaya tidak menerima melebihi yang dipesan.
 func (i *PurchaseOrderItem) SisaDiterima() int {
 	sisa := i.QtyPesan - i.QtyDiterima
 	if sisa < 0 {

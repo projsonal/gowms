@@ -22,9 +22,6 @@ func totpReplayKey(userID uint, code string) string {
 	return strconv.FormatUint(uint64(userID), 10) + ":" + code
 }
 
-// checkAndMark mengembalikan true kalau kode ini BELUM pernah dipakai user
-// tsb (dan langsung menandainya sebagai terpakai), atau false kalau ini
-// percobaan ulang kode yang sama.
 func (g *totpReplayGuard) checkAndMark(userID uint, code string) bool {
 	key := totpReplayKey(userID, code)
 	g.mu.Lock()

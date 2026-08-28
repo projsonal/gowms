@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	notification "github.com/projsonal/gowms/internal/controller/notification"
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	bkRepo "github.com/projsonal/gowms/internal/repositories/barang_keluar"
@@ -32,20 +32,10 @@ func generateNomorBK() string {
 	return fmt.Sprintf("BK-%d-%d", time.Now().Year(), time.Now().UnixNano()%100000)
 }
 
-// validateItems memastikan tiap barang_id & rak_id (bila diisi) memang ada.
-// Validasi KECUKUPAN stok/rak sengaja TIDAK dilakukan di sini — itu
-// dilakukan atomik di dalam transaksi repository saat Complete, supaya
-// tidak ada celah waktu (TOCTOU) antara pengecekan dan pengurangan stok
-// jika ada dua pengeluaran barang yang sama diproses hampir bersamaan.
 func (h *Controller) validateItems(items []ItemRequest) error {
 	for _, it := range items {
 		if _, err := h.barangRepo.FindByID(it.BarangID); err != nil {
 			return fmt.Errorf("barang id %d tidak ditemukan", it.BarangID)
-		}
-		if it.RakID != nil {
-			if _, err := h.gudangRepo.FindRakByID(*it.RakID); err != nil {
-				return fmt.Errorf("rak id %d tidak ditemukan", *it.RakID)
-			}
 		}
 	}
 	return nil
@@ -54,7 +44,7 @@ func (h *Controller) validateItems(items []ItemRequest) error {
 func toItemModels(items []ItemRequest) []model.BarangKeluarItem {
 	out := make([]model.BarangKeluarItem, 0, len(items))
 	for _, it := range items {
-		out = append(out, model.BarangKeluarItem{BarangID: it.BarangID, RakID: it.RakID, Qty: it.Qty})
+		out = append(out, model.BarangKeluarItem{BarangID: it.BarangID, Qty: it.Qty})
 	}
 	return out
 }
@@ -72,7 +62,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar barang keluar berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /barang-keluar/:id
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -202,18 +191,6 @@ func (h *Controller) Complete(c *fiber.Ctx) error {
 	return utils.OK(c, "barang keluar berhasil diselesaikan, stok & rak telah diperbarui", bk)
 }
 
-// notifyLowStock — kirim SATU notifikasi broadcast ("all") per barang yang
-// stoknya BARU SAJA turun ke/di bawah stok_minimum akibat dokumen barang
-// keluar ini. "Baru saja" dihitung dari stok SEBELUM dipotong (Stok saat
-// ini + Qty yang baru dikeluarkan) dibandingkan stok SESUDAH — supaya
-// TIDAK spam notifikasi berulang tiap ada barang keluar lain sementara
-// barang itu memang sudah lama di bawah ambang (item.Barang di sini sudah
-// mencerminkan Stok TERBARU, lihat repo.Complete -> FindByID di akhir).
-// Preferensi "Peringatan Stok Minimum" ON/OFF di Settings -> Notifikasi
-// SENGAJA tidak dicek di sini — itu preferensi TAMPILAN per user/device
-// (lihat NotificationBell.tsx), bukan penentu apakah notifikasi ini boleh
-// dibuat sama sekali (kalau tidak dibuat sama sekali, user yang preferensinya
-// ON tidak akan pernah melihatnya juga).
 func (h *Controller) notifyLowStock(items []model.BarangKeluarItem) {
 	for _, item := range items {
 		if item.Barang == nil || item.Barang.StokMinimum <= 0 {
@@ -243,7 +220,6 @@ func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen barang keluar berhasil dibatalkan", bk)
 }
 
-// Summary GET /barang-keluar/summary
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
 	draft, err2 := h.repo.CountByStatus(constant.StatusBKDraft)
@@ -256,7 +232,6 @@ func (h *Controller) Summary(c *fiber.Ctx) error {
 	})
 }
 
-// RegisterRoutes mendaftarkan endpoint modul "Barang Keluar".
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/barang-keluar", middleware.JWTAuth(h.jwtSvc))
 

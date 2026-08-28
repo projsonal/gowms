@@ -13,7 +13,7 @@ import (
 const (
 	unknownLocation       = "-"
 	defaultTimeout        = 2 * time.Second
-	maxResponseSize int64 = 1 << 20 // 1 MB
+	maxResponseSize int64 = 1 << 20
 	geoPath               = "/json/"
 	geoFields             = "status,city,country,timezone"
 	statusSuccess         = "success"

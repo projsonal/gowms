@@ -9,70 +9,29 @@ import (
 	"github.com/jung-kurt/gofpdf"
 )
 
-// ChartData — hasil agregasi "Analisa Data" yang disisipkan ke file
-// unduhan. Sengaja didefinisikan ULANG di sini (bukan import paket
-// internal/controller/laporan) supaya pkg/reportexport tetap paket
-// mandiri tanpa dependensi balik ke internal/ (pkg/ dirancang bisa
-// dipakai controller manapun, tidak boleh bergantung ke satu controller
-// spesifik).
 type ChartData struct {
 	Title  string
-	Type   string // "bar" | "line" — saat ini keduanya digambar sebagai bar chart sederhana di PDF/Excel
+	Type   string
 	Labels []string
 	Values []float64
 }
 
-// Kop surat WMS-RSD: pita hijau tua di atas & bawah tiap halaman, meniru
-// gaya kop surat resmi perusahaan (lihat referensi Kopsurat_RSD.docx) tapi
-// dengan nama aplikasi "WMS-RSD" alih-alih nama PT.
 var (
-	headerBandColor   = [3]int{20, 60, 20}  // hijau tua
-	headerAccentColor = [3]int{90, 200, 60} // hijau terang (aksen garis diagonal)
+	headerBandColor   = [3]int{20, 60, 20}
+	headerAccentColor = [3]int{90, 200, 60}
 	footerTextColor   = [3]int{255, 255, 255}
 )
 
-// cp1252Special memetakan karakter "tipografis" umum (em dash, en dash,
-// tanda kutip lengkung, elipsis) ke byte tunggal CP1252 yang benar —
-// karakter-karakter ini justru ADA di code page ini (di blok 0x80-0x9F),
-// bukan cuma kebetulan sama seperti Latin-1 di bawah.
 var cp1252Special = map[rune]byte{
-	'\u2013': 0x96, // en dash –
-	'\u2014': 0x97, // em dash —
-	'\u2018': 0x91, // left single quote '
-	'\u2019': 0x92, // right single quote '
-	'\u201C': 0x93, // left double quote "
-	'\u201D': 0x94, // right double quote "
-	'\u2026': 0x85, // ellipsis …
+	'\u2013': 0x96,
+	'\u2014': 0x97,
+	'\u2018': 0x91,
+	'\u2019': 0x92,
+	'\u201C': 0x93,
+	'\u201D': 0x94,
+	'\u2026': 0x85,
 }
 
-// pdfSafe menerjemahkan string UTF-8 apa pun (dari Go, bisa berisi nama
-// barang/PIC/catatan hasil input user) jadi string yang AMAN dicetak
-// pakai font inti "Arial" gofpdf — font itu bukan font UTF-8, dia
-// menganggap tiap byte = 1 karakter memakai code page CP1252 (mirip
-// Latin-1). Tanpa penerjemahan ini, karakter apa pun di luar ASCII polos
-// (em dash, tanda kutip lengkung hasil copy-paste dari Word/Google Docs,
-// huruf beraksen é/ñ/ü, dst) akan tercetak jadi mojibake (persis kasus
-// "Analisa Data — ..." yang tercetak "Analisa Data â€" ..." di laporan
-// yang diunduh) karena 2-3 byte UTF-8 tiap karakter itu dikirim apa
-// adanya ke font yang cuma paham 1 byte per karakter.
-//
-// Aturan penerjemahan per karakter:
-//   - ASCII biasa (U+0000-U+007F): apa adanya, tidak berubah.
-//   - Latin-1 Supplement (U+00A0-U+00FF, mis. é ñ ü à ç): kebetulan
-//     nilai kode Unicode-nya SAMA dengan byte CP1252-nya, jadi tinggal
-//     dikonversi ke byte itu langsung — huruf beraksen tetap tercetak
-//     BENAR, bukan diganti "?".
-//   - Tanda baca tipografis umum (em/en dash, tanda kutip lengkung,
-//     elipsis): dipetakan manual lewat cp1252Special di atas (nilai
-//     Unicode-nya TIDAK sama dengan CP1252, perlu tabel terpisah).
-//   - Sisanya (emoji, aksara non-Latin, dll — jarang tapi mungkin ada di
-//     data bebas seperti field Catatan): diganti "?" per karakter,
-//     supaya dokumen tetap valid & terbaca alih-alih mojibake yang
-//     merusak tampilan seluruh baris.
-//
-// Beda dari pkg/reportexport/excel.go & docs.go yang TIDAK butuh fungsi
-// ini — format XLSX/DOCX berbasis XML UTF-8 asli, aman menerima string
-// Go apa adanya.
 func pdfSafe(s string) string {
 	out := make([]byte, 0, len(s))
 	for _, r := range s {
@@ -95,11 +54,9 @@ func pdfSafe(s string) string {
 func drawLetterhead(pdf *gofpdf.Fpdf, reportTitle string) {
 	pageWidth, _ := pdf.GetPageSize()
 
-	// Pita header hijau tua penuh lebar halaman.
 	pdf.SetFillColor(headerBandColor[0], headerBandColor[1], headerBandColor[2])
 	pdf.Rect(0, 0, pageWidth, 20, "F")
-	// Aksen garis diagonal khas kop surat referensi (disederhanakan jadi
-	// beberapa garis miring hijau terang di ujung kanan pita).
+
 	pdf.SetDrawColor(headerAccentColor[0], headerAccentColor[1], headerAccentColor[2])
 	pdf.SetLineWidth(1.2)
 	for i := 0; i < 3; i++ {
@@ -138,17 +95,6 @@ func drawFooterBand(pdf *gofpdf.Fpdf) {
 	pdf.SetTextColor(0, 0, 0)
 }
 
-// drawBarChart menggambar bar chart SEDERHANA langsung pakai primitif
-// vektor gofpdf (Rect/Line/teks) — TIDAK ada library charting eksternal
-// yang di-`go get` (proxy Go modules diblokir di sebagian lingkungan
-// build/sandbox, jadi dependensi baru berisiko gagal fetch). Cukup untuk
-// "Analisa Data" yang diminta (tren per periode / top item), bukan
-// pengganti chart interaktif recharts yang dipakai di UI web.
-//
-// Ukuran chart MENYESUAIKAN OTOMATIS ke lebar halaman A4 potrait (bukan
-// ukuran tetap) — barWidth dihitung dari lebar area usable dibagi jumlah
-// titik data, supaya tetap proporsional baik untuk 3 titik (mis. laporan
-// tahunan) maupun 31 titik (laporan harian sebulan penuh).
 func drawBarChart(pdf *gofpdf.Fpdf, chart *ChartData) {
 	if chart == nil || len(chart.Values) == 0 {
 		return
@@ -156,12 +102,10 @@ func drawBarChart(pdf *gofpdf.Fpdf, chart *ChartData) {
 	pageWidth, _ := pdf.GetPageSize()
 	marginL, _, marginR, _ := pdf.GetMargins()
 	usable := pageWidth - marginL - marginR
-	const chartHeight = 55.0 // mm — cukup besar untuk terbaca, tidak makan lebih dari ~1/4 halaman A4
+	const chartHeight = 55.0
 
 	pdf.SetFont("Arial", "B", 10)
-	// pdfSafe (lihat definisinya di atas) menerjemahkan em dash & karakter
-	// non-ASCII lain di chart.Title (bisa berisi input bebas, mis. nama
-	// kategori/gudang) ke CP1252 supaya tidak mojibake di font inti Arial.
+
 	pdf.CellFormat(0, 7, pdfSafe("Analisa Data — "+chart.Title), "", 1, "L", false, 0, "")
 
 	maxVal := 0.0
@@ -176,7 +120,7 @@ func drawBarChart(pdf *gofpdf.Fpdf, chart *ChartData) {
 
 	startY := pdf.GetY()
 	startX := marginL
-	// Sisakan ruang label sumbu-Y (angka maksimum) di kiri.
+
 	yAxisLabelWidth := 12.0
 	plotX := startX + yAxisLabelWidth
 	plotWidth := usable - yAxisLabelWidth
@@ -184,9 +128,7 @@ func drawBarChart(pdf *gofpdf.Fpdf, chart *ChartData) {
 	gap := 1.5
 	barWidth := (plotWidth - gap*float64(n-1)) / float64(n)
 	if barWidth < 2 {
-		// Terlalu banyak titik data untuk lebar halaman — batasi ke 40
-		// titik terakhir supaya chart tetap terbaca alih-alih bar setipis
-		// rambut yang tidak berguna.
+
 		const maxBars = 40
 		if n > maxBars {
 			chart.Labels = chart.Labels[n-maxBars:]
@@ -196,7 +138,6 @@ func drawBarChart(pdf *gofpdf.Fpdf, chart *ChartData) {
 		}
 	}
 
-	// Sumbu.
 	pdf.SetDrawColor(180, 180, 180)
 	pdf.Line(plotX, startY, plotX, startY+chartHeight)
 	pdf.Line(plotX, startY+chartHeight, plotX+plotWidth, startY+chartHeight)
@@ -212,8 +153,6 @@ func drawBarChart(pdf *gofpdf.Fpdf, chart *ChartData) {
 		pdf.Rect(x, y, barWidth, barH, "F")
 	}
 
-	// Label sumbu-X — kalau kebanyakan titik, cuma tampilkan sebagian
-	// (tiap-N) supaya tidak numpuk tak terbaca.
 	pdf.SetFont("Arial", "", 5.5)
 	pdf.SetTextColor(90, 90, 90)
 	labelEvery := 1

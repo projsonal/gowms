@@ -17,10 +17,6 @@ var (
 	ErrAlreadyUsed = errors.New("token verifikasi sudah digunakan, silakan verifikasi ulang")
 )
 
-// Service memverifikasi human-check token: HMAC-signed timestamp + nonce
-// yang harus di-"issue" lebih dulu, tidak boleh dipakai lebih cepat dari
-// minDelay (menggagalkan bot yang submit instan), tidak boleh kedaluwarsa
-// dari ttl, dan tidak boleh dipakai dua kali (replay).
 type Service struct {
 	secret   []byte
 	ttl      time.Duration

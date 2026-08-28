@@ -154,13 +154,7 @@ func (r *repository) Selesaikan(id uint, catatan string) (*model.Pengiriman, err
 		Updates(map[string]interface{}{
 			"status":  constant.StatusPGTerkirim,
 			"catatan": catatan,
-			// KOLOM SEBELUMNYA "selesai_at" TIDAK PERNAH ADA di tabel
-			// `pengiriman` — model.Pengiriman field-nya bernama
-			// WaktuTerkirim (gorm otomatis -> kolom `waktu_terkirim`),
-			// bukan SelesaiAt. Karena Updates() di sini pakai map string
-			// mentah (bukan struct), typo ini lolos dari pengecekan
-			// compiler dan baru muncul sebagai error runtime "column ...
-			// does not exist" tiap kali tombol "Tandai Selesai" ditekan.
+
 			"waktu_terkirim": now,
 		})
 	if res.Error != nil {
@@ -185,8 +179,6 @@ func (r *repository) Batalkan(id uint) (*model.Pengiriman, error) {
 	return r.FindByID(id)
 }
 
-// SetProtected — aksi "Protect" di action bar tabel (khusus super_admin,
-// lihat RegisterRoutes). Sama pola dengan Gudang/Barang/Supplier/PO.
 func (r *repository) SetProtected(id uint, protected bool) (*model.Pengiriman, error) {
 	if err := r.db.Model(&model.Pengiriman{}).Where("id = ?", id).
 		Update("is_protected", protected).Error; err != nil {

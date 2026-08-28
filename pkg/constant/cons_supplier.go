@@ -1,4 +1,3 @@
 package constant
 
-// Supplier
 const ()

@@ -26,9 +26,7 @@ type AnalisaResponse struct {
 	KategoriComposition  []KategoriComposition `json:"kategori_composition"`
 	TopRestocked         []BarangRanking       `json:"top_restocked"`
 	TopKeluar            []BarangRanking       `json:"top_keluar"`
-	// Aset perusahaan (tiang/ODC/ONT/ODP/OLT/transportasi) — lihat catatan
-	// panjang di bawah, dekat query-nya, kenapa ini ditambahkan sebagai
-	// bagian terpisah dari analisa barang di atas.
+
 	TotalAset     int64                 `json:"total_aset"`
 	AsetRusak     int64                 `json:"aset_rusak"`
 	AsetPerJenis  []KategoriComposition `json:"aset_per_jenis"`
@@ -36,13 +34,6 @@ type AnalisaResponse struct {
 	AsetPerGudang []KategoriComposition `json:"aset_per_gudang"`
 }
 
-// Analisa GET /dashboard/analisa — dipakai halaman "Analisa Data". SEMUA
-// angka dihitung langsung dari database (bukan dummy) — TIDAK ADA metrik
-// "akurasi prediksi stok" seperti versi awal frontend karena aplikasi ini
-// belum punya sistem forecasting/ML apa pun; menampilkan angka semacam itu
-// tanpa model di baliknya cuma akan jadi angka karangan. "Stok Menipis"
-// (jumlah SKU yang stoknya <= stok_minimum) dipakai sebagai gantinya —
-// metrik yang sama-sama actionable tapi benar-benar bisa dihitung.
 func (h *Controller) Analisa(c *fiber.Ctx) error {
 	db := h.db
 	now := time.Now()
@@ -87,13 +78,6 @@ func (h *Controller) Analisa(c *fiber.Ctx) error {
 		Limit(5).
 		Scan(&topKeluar)
 
-	// --- Analisa Aset Perusahaan (tiang/ODC/ONT/ODP/OLT/transportasi) ---
-	// Bagian TERPISAH dari analisa barang di atas (SKU consumable gudang)
-	// karena memang dua jenis data yang beda sifat: Barang = stok yang
-	// keluar-masuk terus, Aset = infrastruktur yang dipasang & dipantau
-	// kondisinya (lihat internal/model/asset.go) — tapi sama-sama layak
-	// dianalisis di halaman "Analisa Data" yang sama supaya user tidak
-	// perlu buka menu terpisah untuk gambaran keseluruhan.
 	var totalAset int64
 	db.Model(&model.Asset{}).Count(&totalAset)
 

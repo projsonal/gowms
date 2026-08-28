@@ -14,6 +14,7 @@ import (
 	barangKeluarRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_keluar"
 	barangMasukRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_masuk"
 	barangRusakRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_rusak"
+	barangSerialRepoPkg "github.com/projsonal/gowms/internal/repositories/barang_serial"
 	stockOpnameRepoPkg "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/reportexport"
@@ -80,11 +81,23 @@ func orDash(s string) string {
 	return s
 }
 
-func uintOrDash(v *uint) string {
-	if v == nil {
+func (h *Controller) userLabel(cache map[uint]string, id *uint) string {
+	if id == nil {
 		return "-"
 	}
-	return strconv.FormatUint(uint64(*v), 10)
+	if name, ok := cache[*id]; ok {
+		return name
+	}
+	name := "-"
+	if u, err := h.usersRepo.FindByID(*id); err == nil && u != nil {
+		if u.FullName != "" {
+			name = u.FullName
+		} else {
+			name = u.Username
+		}
+	}
+	cache[*id] = name
+	return name
 }
 
 func (h *Controller) buildStokBarang() (headers []string, rows [][]string, err error) {
@@ -92,7 +105,7 @@ func (h *Controller) buildStokBarang() (headers []string, rows [][]string, err e
 	if err != nil {
 		return nil, nil, err
 	}
-	headers = []string{"Kode Barang", "Nama", "Kategori", "Satuan", "Stok", "Stok Minimum", "Harga Beli", "Nilai Inventaris", "Status"}
+	headers = []string{"Kode Barang", "Nama", "Merek", "Tipe", "Kategori", "Satuan", "Stok", "Stok Minimum", "Harga Beli", "Nilai Inventaris", "Status"}
 	for _, b := range list {
 		kategori, satuan := "-", "-"
 		if b.Kategori != nil {
@@ -106,7 +119,7 @@ func (h *Controller) buildStokBarang() (headers []string, rows [][]string, err e
 			status = "Nonaktif"
 		}
 		rows = append(rows, []string{
-			b.KodeBarang, b.Nama, kategori, satuan,
+			b.KodeBarang, b.Nama, orDash(b.Merek), orDash(b.Tipe), kategori, satuan,
 			strconv.Itoa(b.Stok), strconv.Itoa(b.StokMinimum),
 			formatRupiah(b.HargaBeli), formatRupiah(b.NilaiInventaris()), status,
 		})
@@ -114,12 +127,50 @@ func (h *Controller) buildStokBarang() (headers []string, rows [][]string, err e
 	return headers, rows, nil
 }
 
+const maxSerialsShownInReport = 5
+
+func summarizeSerials(serials []string) string {
+	if len(serials) == 0 {
+		return "-"
+	}
+	if len(serials) <= maxSerialsShownInReport {
+		return strings.Join(serials, "; ")
+	}
+	shown := strings.Join(serials[:maxSerialsShownInReport], "; ")
+	return fmt.Sprintf("%s; +%d lainnya", shown, len(serials)-maxSerialsShownInReport)
+}
+
+func (h *Controller) serialsForMasukItem(itemID uint) string {
+	list, _, err := h.barangSerialRepo.List(bigPagination(), barangSerialRepoPkg.Filter{BarangMasukItemID: itemID})
+	if err != nil || len(list) == 0 {
+		return "-"
+	}
+	sn := make([]string, 0, len(list))
+	for _, s := range list {
+		sn = append(sn, s.SerialNumber)
+	}
+	return summarizeSerials(sn)
+}
+
+func (h *Controller) serialsForKeluarItem(itemID uint) string {
+	list, _, err := h.barangSerialRepo.List(bigPagination(), barangSerialRepoPkg.Filter{BarangKeluarItemID: itemID})
+	if err != nil || len(list) == 0 {
+		return "-"
+	}
+	sn := make([]string, 0, len(list))
+	for _, s := range list {
+		sn = append(sn, s.SerialNumber)
+	}
+	return summarizeSerials(sn)
+}
+
 func (h *Controller) buildBarangMasuk(dari, sampai *time.Time) (headers []string, rows [][]string, err error) {
 	list, _, err := h.barangMasukRepo.List(bigPagination(), barangMasukRepoPkg.Filter{})
 	if err != nil {
 		return nil, nil, err
 	}
-	headers = []string{"Nomor Penerimaan", "Tanggal", "Gudang", "Status", "Diterima Oleh (User ID)", "Catatan"}
+	headers = []string{"Nomor Penerimaan", "Tanggal", "Gudang", "Kode Barang", "Nama Barang", "Merek", "Tipe", "Qty", "Harga Satuan", "Serial Number", "Status", "Diterima Oleh", "Catatan"}
+	userCache := map[uint]string{}
 	for _, bm := range list {
 		if !inRange(bm.Tanggal, dari, sampai) {
 			continue
@@ -128,10 +179,27 @@ func (h *Controller) buildBarangMasuk(dari, sampai *time.Time) (headers []string
 		if bm.Gudang != nil {
 			gudang = bm.Gudang.Nama
 		}
-		rows = append(rows, []string{
-			bm.NomorPenerimaan, bm.Tanggal.Format(dateFormat), gudang,
-			bm.Status, uintOrDash(bm.DiterimaOleh), bm.Catatan,
-		})
+		if len(bm.Items) == 0 {
+			rows = append(rows, []string{
+				bm.NomorPenerimaan, bm.Tanggal.Format(dateFormat), gudang, "-", "-", "-", "-", "-", "-", "-",
+				bm.Status, h.userLabel(userCache, bm.DiterimaOleh), bm.Catatan,
+			})
+			continue
+		}
+		for _, it := range bm.Items {
+			kodeBarang, nama, merek, tipe, sn := "-", "-", "-", "-", "-"
+			if it.Barang != nil {
+				kodeBarang, nama = it.Barang.KodeBarang, it.Barang.Nama
+				merek, tipe = orDash(it.Barang.Merek), orDash(it.Barang.Tipe)
+				if it.Barang.IsSerialized {
+					sn = h.serialsForMasukItem(it.ID)
+				}
+			}
+			rows = append(rows, []string{
+				bm.NomorPenerimaan, bm.Tanggal.Format(dateFormat), gudang, kodeBarang, nama, merek, tipe,
+				strconv.Itoa(it.Qty), formatRupiah(it.HargaSatuan), sn, bm.Status, h.userLabel(userCache, bm.DiterimaOleh), bm.Catatan,
+			})
+		}
 	}
 	return headers, rows, nil
 }
@@ -141,7 +209,8 @@ func (h *Controller) buildBarangKeluar(dari, sampai *time.Time) (headers []strin
 	if err != nil {
 		return nil, nil, err
 	}
-	headers = []string{"Nomor Pengeluaran", "Tanggal", "Gudang", "Keperluan", "Penerima", "Status", "Dikeluarkan Oleh (User ID)"}
+	headers = []string{"Nomor Pengeluaran", "Tanggal", "Gudang", "Kode Barang", "Nama Barang", "Merek", "Tipe", "Qty", "Serial Number", "Keperluan", "Penerima", "Status", "Dikeluarkan Oleh"}
+	userCache := map[uint]string{}
 	for _, bk := range list {
 		if !inRange(bk.Tanggal, dari, sampai) {
 			continue
@@ -150,10 +219,27 @@ func (h *Controller) buildBarangKeluar(dari, sampai *time.Time) (headers []strin
 		if bk.Gudang != nil {
 			gudang = bk.Gudang.Nama
 		}
-		rows = append(rows, []string{
-			bk.NomorPengeluaran, bk.Tanggal.Format(dateFormat), gudang, bk.Keperluan, bk.Penerima,
-			bk.Status, uintOrDash(bk.DikeluarkanOleh),
-		})
+		if len(bk.Items) == 0 {
+			rows = append(rows, []string{
+				bk.NomorPengeluaran, bk.Tanggal.Format(dateFormat), gudang, "-", "-", "-", "-", "-", "-",
+				bk.Keperluan, bk.Penerima, bk.Status, h.userLabel(userCache, bk.DikeluarkanOleh),
+			})
+			continue
+		}
+		for _, it := range bk.Items {
+			kodeBarang, nama, merek, tipe, sn := "-", "-", "-", "-", "-"
+			if it.Barang != nil {
+				kodeBarang, nama = it.Barang.KodeBarang, it.Barang.Nama
+				merek, tipe = orDash(it.Barang.Merek), orDash(it.Barang.Tipe)
+				if it.Barang.IsSerialized {
+					sn = h.serialsForKeluarItem(it.ID)
+				}
+			}
+			rows = append(rows, []string{
+				bk.NomorPengeluaran, bk.Tanggal.Format(dateFormat), gudang, kodeBarang, nama, merek, tipe,
+				strconv.Itoa(it.Qty), sn, bk.Keperluan, bk.Penerima, bk.Status, h.userLabel(userCache, bk.DikeluarkanOleh),
+			})
+		}
 	}
 	return headers, rows, nil
 }
@@ -163,7 +249,8 @@ func (h *Controller) buildStockOpname(dari, sampai *time.Time) (headers []string
 	if err != nil {
 		return nil, nil, err
 	}
-	headers = []string{"Nomor Opname", "Tanggal", "Gudang", "Status", "Dilakukan Oleh (User ID)", "Catatan"}
+	headers = []string{"Nomor Opname", "Tanggal", "Gudang", "Kode Barang", "Nama Barang", "Stok Sistem", "Stok Fisik", "Selisih", "Status", "Dilakukan Oleh", "Catatan"}
+	userCache := map[uint]string{}
 	for _, so := range list {
 		if !inRange(so.Tanggal, dari, sampai) {
 			continue
@@ -172,9 +259,25 @@ func (h *Controller) buildStockOpname(dari, sampai *time.Time) (headers []string
 		if so.Gudang != nil {
 			gudang = so.Gudang.Nama
 		}
-		rows = append(rows, []string{
-			so.NomorOpname, so.Tanggal.Format(dateFormat), gudang, so.Status, uintOrDash(so.DilakukanOleh), so.Catatan,
-		})
+		dilakukanOleh := h.userLabel(userCache, so.DilakukanOleh)
+		if len(so.Items) == 0 {
+			rows = append(rows, []string{
+				so.NomorOpname, so.Tanggal.Format(dateFormat), gudang, "-", "-", "-", "-", "-",
+				so.Status, dilakukanOleh, so.Catatan,
+			})
+			continue
+		}
+		for _, it := range so.Items {
+			kodeBarang, nama := "-", "-"
+			if it.Barang != nil {
+				kodeBarang, nama = it.Barang.KodeBarang, it.Barang.Nama
+			}
+			rows = append(rows, []string{
+				so.NomorOpname, so.Tanggal.Format(dateFormat), gudang, kodeBarang, nama,
+				strconv.Itoa(it.StokSistem), strconv.Itoa(it.StokFisik), strconv.Itoa(it.Selisih),
+				so.Status, dilakukanOleh, so.Catatan,
+			})
+		}
 	}
 	return headers, rows, nil
 }
@@ -185,6 +288,56 @@ var reportTitles = map[string]string{
 	constant.LaporanBarangKeluar: "Laporan Barang Keluar",
 	constant.LaporanStokOpname:   "Laporan Stock Opname",
 	constant.LaporanBarangRetur:  "Laporan Barang Retur",
+	constant.LaporanBarangRusak:  "Laporan Barang Rusak",
+}
+
+var barangRusakStatusLabel = map[string]string{
+	constant.StatusBarangRusakPengecekan: "Menunggu Pengecekan",
+	constant.StatusBarangRusakDiperbaiki: "Bisa Diperbaiki",
+	constant.StatusRetur:                 "Retur",
+	constant.StatusBarangRusakDibuang:    "Dibuang/Rusak",
+}
+
+// buildBarangRusak — laporan SELURUH laporan barang rusak (semua status:
+// menunggu pengecekan, bisa diperbaiki, retur, dibuang), berbeda dari
+// buildBarangRetur yang cuma mengambil status "retur" saja.
+func (h *Controller) buildBarangRusak(dari, sampai *time.Time) (headers []string, rows [][]string, err error) {
+	list, _, err := h.barangRusakRepo.List(bigPagination(), barangRusakRepoPkg.Filter{})
+	if err != nil {
+		return nil, nil, err
+	}
+	headers = []string{"Label/Kode Barang", "Kode Barang (SKU)", "Nama Barang", "Merek", "Tipe", "Serial Number", "Keterangan", "Status", "Dilaporkan Oleh", "Diperiksa Oleh", "Tanggal Diperiksa"}
+	for _, b := range list {
+		refDate := b.DicekPada
+		if refDate == nil {
+			refDate = &b.CreatedAt
+		}
+		if !inRange(*refDate, dari, sampai) {
+			continue
+		}
+		pelapor, pemeriksa, tanggal := "-", "-", "-"
+		if b.Pelapor != nil {
+			pelapor = b.Pelapor.FullName
+		}
+		if b.Pemeriksa != nil {
+			pemeriksa = b.Pemeriksa.FullName
+		}
+		if b.DicekPada != nil {
+			tanggal = b.DicekPada.Format(dateFormat)
+		}
+		kodeBarang, merek, tipe := "-", "-", "-"
+		if b.Barang != nil {
+			kodeBarang, merek, tipe = b.Barang.KodeBarang, orDash(b.Barang.Merek), orDash(b.Barang.Tipe)
+		}
+		status := b.Status
+		if label, ok := barangRusakStatusLabel[b.Status]; ok {
+			status = label
+		}
+		rows = append(rows, []string{
+			b.LabelBarang, kodeBarang, b.NamaBarang, merek, tipe, orDash(b.SerialNumber), orDash(b.Keterangan), status, pelapor, pemeriksa, tanggal,
+		})
+	}
+	return headers, rows, nil
 }
 
 func (h *Controller) buildReport(tipe string, dari, sampai *time.Time) (title string, headers []string, rows [][]string, err error) {
@@ -204,22 +357,18 @@ func (h *Controller) buildReport(tipe string, dari, sampai *time.Time) (title st
 		headers, rows, err = h.buildStockOpname(dari, sampai)
 	case constant.LaporanBarangRetur:
 		headers, rows, err = h.buildBarangRetur(dari, sampai)
+	case constant.LaporanBarangRusak:
+		headers, rows, err = h.buildBarangRusak(dari, sampai)
 	}
 	return title, headers, rows, err
 }
 
-// buildBarangRetur — daftar barang rusak yang HASIL PENGECEKANNYA "retur"
-// (bisa diperbaiki/dikembalikan ke supplier, lihat dokumentasi alur di
-// model.BarangRusak) dalam rentang tanggal pengecekan (DicekPada). Barang
-// dengan hasil "rusak" (tidak bisa diperbaiki) atau yang masih menunggu
-// pengecekan TIDAK ikut di laporan ini — beda modul dari Laporan Barang
-// Keluar/Masuk, sumbernya BarangRusak bukan BarangKeluar/BarangMasuk.
 func (h *Controller) buildBarangRetur(dari, sampai *time.Time) (headers []string, rows [][]string, err error) {
 	list, _, err := h.barangRusakRepo.List(bigPagination(), barangRusakRepoPkg.Filter{Status: constant.StatusRetur})
 	if err != nil {
 		return nil, nil, err
 	}
-	headers = []string{"Label/Kode Barang", "Nama Barang", "Keterangan", "Dilaporkan Oleh", "Diperiksa Oleh", "Tanggal Diperiksa"}
+	headers = []string{"Label/Kode Barang", "Kode Barang (SKU)", "Nama Barang", "Merek", "Tipe", "Serial Number", "Keterangan", "Dilaporkan Oleh", "Diperiksa Oleh", "Tanggal Diperiksa"}
 	for _, b := range list {
 		if b.DicekPada != nil && !inRange(*b.DicekPada, dari, sampai) {
 			continue
@@ -234,18 +383,17 @@ func (h *Controller) buildBarangRetur(dari, sampai *time.Time) (headers []string
 		if b.DicekPada != nil {
 			tanggal = b.DicekPada.Format(dateFormat)
 		}
+		kodeBarang, merek, tipe := "-", "-", "-"
+		if b.Barang != nil {
+			kodeBarang, merek, tipe = b.Barang.KodeBarang, orDash(b.Barang.Merek), orDash(b.Barang.Tipe)
+		}
 		rows = append(rows, []string{
-			b.LabelBarang, b.NamaBarang, orDash(b.Keterangan), pelapor, pemeriksa, tanggal,
+			b.LabelBarang, kodeBarang, b.NamaBarang, merek, tipe, orDash(b.SerialNumber), orDash(b.Keterangan), pelapor, pemeriksa, tanggal,
 		})
 	}
 	return headers, rows, nil
 }
 
-// computeGenericSummary membangun ringkasan generik (total baris + agregat
-// kolom yang namanya mengindikasikan nilai uang/kuantitas) dari data
-// laporan APA PUN — dipakai supaya file yang diunduh (Excel/PDF/Word) ikut
-// membawa info "di luar tabel rincian" (setara kartu ringkasan/chart di
-// UI), tanpa perlu logika ringkasan terpisah untuk tiap tipe laporan.
 func computeGenericSummary(headers []string, rows [][]string) [][2]string {
 	summary := [][2]string{{"Total Baris", strconv.Itoa(len(rows))}}
 
@@ -350,12 +498,7 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`attachment; filename="%s-%s.pdf"`, tipe, timestamp))
 		return c.Send(data)
 	case constant.FormatWord:
-		// Docx dirakit manual dari OOXML mentah (lihat pkg/reportexport/docs.go)
-		// TANPA library chart — chart SUNGGUHAN (gambar vektor) tidak bisa
-		// disisipkan, jadi ToDocx menggambar bar chart TEKS pakai tabel
-		// (mirip drawBarChart di pdf.go, cuma horizontal) dari `chart` yang
-		// sama persis dipakai PDF/Excel. `insight` tetap dikirim terpisah
-		// sebagai kalimat pelengkap di bawah bar chart teks itu.
+
 		insight := ""
 		if chart != nil {
 			insight = "Total keseluruhan & rincian: " + chart.Insight()
@@ -371,8 +514,6 @@ func (h *Controller) Export(c *fiber.Ctx) error {
 	return utils.Fail(c, fiber.StatusBadRequest, constant.ErrLaporanFormatTidakDidukung, nil)
 }
 
-// toExportChart — jembatan ChartData (paket laporan) -> reportexport.ChartData
-// (paket reportexport) supaya kedua paket tidak saling import satu sama lain.
 func toExportChart(cd *ChartData) *reportexport.ChartData {
 	if cd == nil {
 		return nil
@@ -419,7 +560,6 @@ func (h *Controller) Preview(c *fiber.Ctx) error {
 	})
 }
 
-// RegisterRoutes mendaftarkan endpoint modul "Laporan".
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/laporan", middleware.JWTAuth(h.jwtSvc))
 	view := middleware.RequirePermission(h.roleRepo, Module, constant.ActionView)

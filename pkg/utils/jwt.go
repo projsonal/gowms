@@ -14,11 +14,7 @@ type JWTClaims struct {
 	UserID   uint   `json:"user_id"`
 	RoleID   uint   `json:"role_id"`
 	RoleName string `json:"role_name"`
-	// SessionID mengaitkan access token ini ke baris refresh_tokens yang
-	// menerbitkannya — dipakai supaya endpoint "Riwayat Login" (ListSessions)
-	// tahu sesi MANA yang sedang dipakai sekarang (IsCurrent), dan supaya
-	// tombol "Cabut" pada sesi itu sendiri bisa memicu logout otomatis di
-	// frontend. Lihat internal/controller/auth issueTokens().
+
 	SessionID uint `json:"session_id"`
 	jwt.RegisteredClaims
 }
@@ -63,9 +59,7 @@ func (s *JWTService) ParseAccessToken(tokenStr string) (*JWTClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
 		return []byte(s.cfg.AccessSecret), nil
 	}, jwt.WithValidMethods([]string{"HS256"}))
-	// WithValidMethods WAJIB ada: tanpa ini, penyerang bisa kirim token
-	// dengan header alg="none" atau alg lain yang membuat verifikasi
-	// keliru lolos ("algorithm confusion attack") — kerentanan JWT klasik.
+
 	if err != nil || !token.Valid {
 		return nil, errors.New("access token tidak valid")
 	}

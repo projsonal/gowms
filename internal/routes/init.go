@@ -20,7 +20,7 @@ import (
 	humanCheckController "github.com/projsonal/gowms/internal/controller/humancheck"
 	laporanController "github.com/projsonal/gowms/internal/controller/laporan"
 	maintenanceController "github.com/projsonal/gowms/internal/controller/maintenance"
-	notificationController "github.com/projsonal/gowms/internal/controller/notification"
+	notificationController "github.com/projsonal/gowms/internal/controller/notifikasi"
 	roleController "github.com/projsonal/gowms/internal/controller/role"
 	securityController "github.com/projsonal/gowms/internal/controller/security"
 	stockOpnameController "github.com/projsonal/gowms/internal/controller/stockOpname"
@@ -39,7 +39,7 @@ import (
 	barangSerialRepo "github.com/projsonal/gowms/internal/repositories/barang_serial"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
 	maintenanceRepo "github.com/projsonal/gowms/internal/repositories/maintenance"
-	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notifikasi"
 	roleRepo "github.com/projsonal/gowms/internal/repositories/role"
 	stockOpnameRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	taskRepo "github.com/projsonal/gowms/internal/repositories/task"
@@ -95,7 +95,6 @@ type Dependencies struct {
 func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	jwtSvc := utils.NewJWTService(&cfg.JWT)
 
-	// Repositories.
 	rRole := roleRepo.New(db)
 	rUsers := usersRepo.New(db)
 	rNotification := notificationRepo.New(db)
@@ -113,7 +112,6 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	rTask := taskRepo.New(db)
 	rMaintenance := maintenanceRepo.New(db)
 
-	// Services lintas modul.
 	captchaSvc := captcha.NewService(cfg.Captcha.Secret, time.Duration(cfg.Captcha.TTLMinutes)*time.Minute)
 	humanCheckSvc := humancheck.NewService(
 		cfg.HumanCheck.Secret,
@@ -123,7 +121,6 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	botCheckSvc := botcheck.NewService(cfg.BotCheck.Secret, time.Duration(cfg.BotCheck.WindowMinutes)*time.Minute)
 	geoipSvc := newGeoIPResolver(cfg)
 
-	// Controllers.
 	cAuth := authController.New(authController.Params{
 		AuthRepo:      rAuth,
 		UserRepo:      rUsers,
@@ -144,15 +141,15 @@ func New(db *gorm.DB, cfg *config.Config) *Dependencies {
 	})
 	cRole := roleController.New(rRole, jwtSvc)
 	cGudang := gudangController.New(rGudang, rRole, jwtSvc)
-	cBarang := barangController.New(rBarang, rGudang, rRole, jwtSvc)
+	cBarang := barangController.New(rBarang, rGudang, rRole, rUsers, jwtSvc, db, rNotification)
 	cBarangMasuk := barangMasukController.New(rBarangMasuk, rBarang, rGudang, rRole, jwtSvc, rNotification)
 	cBarangKeluar := barangKeluarController.New(rBarangKeluar, rBarang, rGudang, rRole, jwtSvc, rNotification)
 	cBarangSerial := barangSerialController.New(rBarangSerial, rBarang, rRole, jwtSvc)
 	cStockOpname := stockOpnameController.New(rStockOpname, rBarang, rGudang, rRole, jwtSvc, rNotification)
-	cAsset := assetController.New(rAsset, rGudang, rAssetPort, rAssetHistory, rUsers, rRole, jwtSvc, rNotification)
-	cBarangRusak := barangRusakController.New(rBarangRusak, rBarang, rRole, jwtSvc, cfg.Storage.Path, rNotification)
+	cAsset := assetController.New(rAsset, rGudang, rAssetPort, rAssetHistory, rUsers, rRole, rBarang, jwtSvc, rNotification)
+	cBarangRusak := barangRusakController.New(rBarangRusak, rBarang, rRole, jwtSvc, rNotification)
 	cTask := taskController.New(rTask, rRole, jwtSvc)
-	cLaporan := laporanController.New(rBarang, rBarangMasuk, rBarangKeluar, rStockOpname, rBarangRusak, rRole, jwtSvc)
+	cLaporan := laporanController.New(rBarang, rBarangMasuk, rBarangKeluar, rStockOpname, rBarangRusak, rBarangSerial, rUsers, rRole, jwtSvc)
 	cDashboard := dashboardController.New(rBarang, rGudang, rBarangMasuk, rBarangKeluar, rStockOpname, rRole, jwtSvc, db)
 	cCaptcha := captchaController.New(captchaSvc)
 	cHumanCheck := humanCheckController.New(humanCheckSvc)

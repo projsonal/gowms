@@ -1,38 +1,3 @@
-// Package wa (file ini) menyediakan implementasi Sender ALTERNATIF yang
-// tidak butuh gateway WhatsApp berbayar (Fonnte/Wablas/Zenziva dkk).
-//
-// LATAR BELAKANG DEBUGGING: kalau kode OTP "tidak pernah sampai" padahal
-// endpoint /auth/password/forgot membalas sukses (200) atau error jelas
-// (502 "gagal mengirim kode OTP lewat WhatsApp"), akar masalahnya HAMPIR
-// SELALU env var WHATSAPP_API_URL / SMS_API_URL belum diisi — wa.Client
-// yang lama (lihat wa.go) memang SENGAJA gagal kalau kosong (lihat
-// errors.New("whatsapp: WHATSAPP_API_URL belum dikonfigurasi")), supaya
-// error-nya jelas alih-alih mengaku sukses padahal tidak mengirim apa-apa.
-// Kalau tidak punya akses ke gateway berbayar, WhatsmeowSender di file ini
-// adalah alternatifnya: login SEKALI pakai nomor WhatsApp sendiri (scan QR
-// lewat cmd/whatsapp-pair), sesi tersimpan di file SQLite, lalu proses
-// utama otomatis konek ulang pakai sesi itu setiap start — tanpa gateway
-// pihak ketiga sama sekali. Ini memakai whatsmeow, package Go yang jadi
-// MESIN di balik github.com/whatsauth/whatsauth (whatsauth membungkus
-// whatsmeow dengan arsitektur hub/websocket terpisah untuk multi-tenant;
-// untuk satu akun WA pengirim OTP saja, whatsmeow langsung lebih ringkas
-// & lebih gampang di-debug).
-//
-// CARA PAKAI:
-//  1. Jalankan sekali: `go run ./cmd/whatsapp-pair` lalu scan QR yang
-//     muncul di terminal pakai HP yang jadi pengirim OTP (WhatsApp ->
-//     Perangkat Tertaut -> Tautkan Perangkat). Sesi tersimpan otomatis di
-//     WHATSMEOW_SESSION_PATH (default ./var/whatsmeow-session.db).
-//  2. Set WHATSAPP_DRIVER=whatsmeow di .env.
-//  3. Jalankan server seperti biasa — sesi yang sudah dipasangkan dipakai
-//     otomatis, TIDAK perlu scan ulang tiap restart.
-//
-// DEPENDENSI: package ini butuh modul yang belum ada di go.mod. Jalankan
-// sebelum build:
-//
-//	go get go.mau.fi/whatsmeow@latest
-//	go get modernc.org/sqlite@latest   # driver SQLite pure-Go, tanpa CGO
-//	go mod tidy
 package wa
 
 import (
@@ -50,21 +15,15 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 
-	_ "modernc.org/sqlite" // driver database/sql "sqlite" — pure Go, tidak butuh CGO
+	_ "modernc.org/sqlite"
 )
 
 const whatsmeowSendTimeout = 15 * time.Second
 
-// WhatsmeowSender mengirim OTP lewat sesi WhatsApp Web milik akun sendiri
-// (sudah dipasangkan sebelumnya lewat cmd/whatsapp-pair). Implements Sender.
 type WhatsmeowSender struct {
 	client *whatsmeow.Client
 }
 
-// NewWhatsmeowSender membuka sesi tersimpan di sessionPath & langsung
-// connect. Kalau belum pernah dipasangkan (device belum ada), fungsi ini
-// mengembalikan error yang jelas — jangan sampai server nyala tapi diam-
-// diam tidak pernah bisa mengirim WhatsApp.
 func NewWhatsmeowSender(ctx context.Context, sessionPath string) (*WhatsmeowSender, error) {
 	dbLog := waLog.Stdout("whatsmeow/db", "WARN", true)
 	container, err := sqlstore.New(ctx, "sqlite", "file:"+sessionPath+"?_pragma=foreign_keys(1)", dbLog)
@@ -92,15 +51,12 @@ func NewWhatsmeowSender(ctx context.Context, sessionPath string) (*WhatsmeowSend
 	return &WhatsmeowSender{client: client}, nil
 }
 
-// Close menutup koneksi whatsmeow — panggil saat aplikasi shutdown.
 func (s *WhatsmeowSender) Close() {
 	if s.client != nil {
 		s.client.Disconnect()
 	}
 }
 
-// normalizePhoneToJID mengubah nomor format E.164 (mis. "+6281234567890")
-// menjadi JID WhatsApp ("6281234567890@s.whatsapp.net").
 func normalizePhoneToJID(phoneNumber string) (types.JID, error) {
 	digits := strings.TrimPrefix(strings.TrimSpace(phoneNumber), "+")
 	if digits == "" {

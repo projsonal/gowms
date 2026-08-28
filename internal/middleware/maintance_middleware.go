@@ -11,9 +11,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// MaintenancePayload adalah body respons 503 saat mode maintenance aktif —
-// dibuat public (diekspor) supaya frontend punya bentuk data yang jelas
-// untuk menampilkan banner + hitung mundur estimasi selesai.
 type MaintenancePayload struct {
 	Maintenance      bool   `json:"maintenance"`
 	Message          string `json:"message"`
@@ -21,21 +18,10 @@ type MaintenancePayload struct {
 	RemainingSeconds int64  `json:"remaining_seconds,omitempty"`
 }
 
-// MaintenanceStatusReader adalah interface minimal (bukan mengimpor seluruh
-// package repository maintenance) supaya middleware ini tidak terikat erat
-// (tightly coupled) ke detail implementasi repository — sama seperti pola
-// PermissionChecker pada rbac_middleware.go.
 type MaintenanceStatusReader interface {
 	Get() (*model.MaintenanceStatus, error)
 }
 
-// MaintenanceMode memblokir akses ke endpoint operasional selama mode
-// maintenance aktif, KECUALI untuk pengguna dengan role super_admin (supaya
-// admin tetap bisa login & mematikan mode maintenance tanpa akses database
-// langsung). Status dibaca dari database di setiap request (lihat
-// MaintenanceStatusReader) — bukan cache in-memory — supaya perubahan
-// status oleh admin langsung berlaku di semua instance backend tanpa perlu
-// restart.
 func MaintenanceMode(repo MaintenanceStatusReader, jwtSvc *utils.JWTService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		status, err := repo.Get()

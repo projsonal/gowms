@@ -70,10 +70,6 @@ func (r *repository) Create(po *model.PurchaseOrder) error {
 	return r.db.Create(po).Error
 }
 
-// Update mengganti header + seluruh item PO sekaligus (full replace),
-// HANYA diizinkan selama status masih "draft" (dicek di layer controller
-// sebelum memanggil ini). Item lama dihapus lalu diganti item baru supaya
-// tidak perlu logika diff tambah/ubah/hapus per baris.
 func (r *repository) Update(po *model.PurchaseOrder, items []model.PurchaseOrderItem) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where(queryPurchaseOrderID, po.ID).Delete(&model.PurchaseOrderItem{}).Error; err != nil {
@@ -151,8 +147,6 @@ func (r *repository) Batalkan(id uint) (*model.PurchaseOrder, error) {
 	return r.FindByID(id)
 }
 
-// SetProtected — aksi "Protect" di action bar tabel (khusus super_admin,
-// lihat RegisterRoutes). Sama pola dengan Gudang/Barang/Supplier.
 func (r *repository) SetProtected(id uint, protected bool) (*model.PurchaseOrder, error) {
 	if err := r.db.Model(&model.PurchaseOrder{}).Where("id = ?", id).
 		Update("is_protected", protected).Error; err != nil {
@@ -161,8 +155,6 @@ func (r *repository) SetProtected(id uint, protected bool) (*model.PurchaseOrder
 	return r.FindByID(id)
 }
 
-// TambahPenerimaan lihat dokumentasi di interfaces.go — dipanggil dari
-// dalam transaksi Barang Masuk.
 func (r *repository) TambahPenerimaan(tx *gorm.DB, purchaseOrderID, barangID uint, qty int) error {
 	if err := tx.Model(&model.PurchaseOrderItem{}).
 		Where("purchase_order_id = ? AND barang_id = ?", purchaseOrderID, barangID).

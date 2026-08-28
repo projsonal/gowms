@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	notification "github.com/projsonal/gowms/internal/controller/notification"
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	poRepo "github.com/projsonal/gowms/internal/repositories/po"
@@ -43,7 +43,6 @@ func toItemModels(items []ItemRequest) []model.PurchaseOrderItem {
 	return out
 }
 
-// List GET /purchase-order?page=&limit=&search=&status=&supplier_id=
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	supplierID, _ := strconv.ParseUint(c.Query("supplier_id", "0"), 10, 64)
@@ -56,7 +55,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar purchase order berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /purchase-order/:id
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -93,10 +91,7 @@ func (h *Controller) Create(c *fiber.Ctx) error {
 	if err := h.repo.Create(po); err != nil {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal membuat purchase order", nil)
 	}
-	// Broadcast "all" (bukan cuma admin/super_admin) supaya konsisten
-	// dengan panel Aktivitas Terbaru dashboard yang lama, yang menampilkan
-	// aktivitas ini ke SEMUA role yang membuka dashboard — lihat catatan
-	// panjang di internal/controller/dashboard/dashboard_extra.go Activity().
+
 	notification.Notify(h.notifRepo, "po",
 		"Purchase Order Baru",
 		po.NomorPO+" dibuat.",
@@ -115,7 +110,6 @@ func (h *Controller) requireDraft(id uint) (*model.PurchaseOrder, error) {
 	return po, nil
 }
 
-// Update PUT /purchase-order/:id — hanya boleh selama status masih draft.
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -151,7 +145,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, "purchase order berhasil diperbarui", po)
 }
 
-// Delete DELETE /purchase-order/:id — hanya boleh selama status draft.
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -170,7 +163,6 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	return utils.OK(c, "purchase order berhasil dihapus", nil)
 }
 
-// Ajukan PATCH /purchase-order/:id/ajukan — draft -> diajukan.
 func (h *Controller) Ajukan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -207,7 +199,6 @@ func (h *Controller) SetujuiTolak(c *fiber.Ctx) error {
 	return utils.OK(c, msg, po)
 }
 
-// Batalkan PATCH /purchase-order/:id/batalkan
 func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -220,8 +211,6 @@ func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "purchase order berhasil dibatalkan", po)
 }
 
-// ProtectPO PATCH /purchase-order/:id/protect — aksi "Protect" di action
-// bar tabel. HANYA super_admin (lihat RegisterRoutes).
 func (h *Controller) ProtectPO(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -241,7 +230,6 @@ func (h *Controller) ProtectPO(c *fiber.Ctx) error {
 	return utils.OK(c, "status proteksi berhasil diubah", po)
 }
 
-// Summary GET /purchase-order/summary — kartu ringkasan dashboard PO.
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
 	menunggu, err2 := h.repo.CountByStatus(constant.StatusPODiajukan)
@@ -274,5 +262,5 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Patch("/:id/ajukan", edit, h.Ajukan)
 	g.Patch("/:id/approval", approval, h.SetujuiTolak)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
-	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectPO) // Protect — khusus super admin
+	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectPO)
 }

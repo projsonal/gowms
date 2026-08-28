@@ -37,8 +37,6 @@ func toPortResponse(a model.Asset, ports []model.AssetPort) []AssetPortResponse 
 	return out
 }
 
-// ListPorts GET /aset/:id/port — grid port aset (mis. ODC dengan 8 port),
-// meniru grid "Port 1..8" di panel detail referensi Fibero.
 func (h *Controller) ListPorts(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -58,10 +56,6 @@ func (h *Controller) ListPorts(c *fiber.Ctx) error {
 	return utils.OK(c, "data port berhasil diambil", toPortResponse(*a, ports))
 }
 
-// SetPort PUT /aset/:id/port/:nomor — isi/ubah satu port. Kirim body
-// kosong (semua field kosong) untuk mengisi port TANPA data pelanggan/
-// child dulu masih dianggap "kosong" — kirim child_asset_id ATAU
-// customer_name supaya statusnya jadi "terisi" (lihat validasi di bawah).
 func (h *Controller) SetPort(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -116,10 +110,6 @@ func (h *Controller) SetPort(c *fiber.Ctx) error {
 		return utils.Fail(c, fiber.StatusInternalServerError, "gagal menyimpan data port", nil)
 	}
 
-	// Kalau port ini disambungkan ke aset lain, sinkronkan
-	// Asset.ParentAssetID aset anak itu juga — dua arah relasi yang sama
-	// (lihat catatan di model.Asset & model.AssetPort), supaya hierarki
-	// konsisten dilihat dari sisi mana pun.
 	if child != nil {
 		child.ParentAssetID = &a.ID
 		_ = h.repo.Update(child)
@@ -132,7 +122,6 @@ func (h *Controller) SetPort(c *fiber.Ctx) error {
 	return utils.OK(c, "port berhasil disimpan", toPortResponse(*a, ports))
 }
 
-// ClearPort DELETE /aset/:id/port/:nomor — kosongkan satu port.
 func (h *Controller) ClearPort(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {

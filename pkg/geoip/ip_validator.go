@@ -6,18 +6,15 @@ import (
 )
 
 var blockedIPNetworks = mustParseCIDRs(
-	// RFC1918 Private IPv4
+
 	"10.0.0.0/8",
 	"172.16.0.0/12",
 	"192.168.0.0/16",
 
-	// IPv6 Unique Local Address
 	"fc00::/7",
 
-	// Carrier Grade NAT RFC6598
 	"100.64.0.0/10",
 
-	// Link Local
 	"169.254.0.0/16",
 	"fe80::/10",
 )
@@ -46,8 +43,6 @@ func containsBlockedNetwork(ip net.IP) bool {
 	return false
 }
 
-// parseHostIP mem-parse alamat IP dari string, membuang zone suffix IPv6
-// (mis. "fe80::1%eth0" -> "fe80::1") sebelum parsing.
 func parseHostIP(value string) net.IP {
 	value = strings.TrimSpace(value)
 	if index := strings.IndexByte(value, '%'); index >= 0 {

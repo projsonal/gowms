@@ -1,5 +1,3 @@
-// Package stock_opname mengimplementasikan layar "Stock Opname": pencocokan
-// stok sistem vs hasil hitung fisik manual di lapangan (tanpa alat IoT).
 package stock_opname
 
 import (
@@ -7,7 +5,7 @@ import (
 
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	gudangRepo "github.com/projsonal/gowms/internal/repositories/gudang"
-	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notifikasi"
 	"github.com/projsonal/gowms/internal/repositories/role"
 	soRepo "github.com/projsonal/gowms/internal/repositories/stockOpname"
 	"github.com/projsonal/gowms/pkg/utils"
@@ -27,19 +25,15 @@ func New(repo soRepo.Repository, barangRepo barangRepo.Repository, gudangRepo gu
 	return &Controller{repo: repo, barangRepo: barangRepo, gudangRepo: gudangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, notifRepo: notifRepo}
 }
 
-// ---- DTO ----
-
 type ItemRequest struct {
 	BarangID  uint   `json:"barang_id" validate:"required"`
-	RakID     *uint  `json:"rak_id"`
 	StokFisik int    `json:"stok_fisik" validate:"min=0"`
 	Catatan   string `json:"catatan" validate:"max=255"`
 }
 
 type SORequest struct {
 	GudangID uint `json:"gudang_id" validate:"required"`
-	// Tanggal: string "YYYY-MM-DD" — lihat catatan lengkap di
-	// internal/controller/barang_masuk/struct.go BMRequest.Tanggal.
+
 	Tanggal string        `json:"tanggal" validate:"required"`
 	Catatan string        `json:"catatan" validate:"max=255"`
 	Items   []ItemRequest `json:"items" validate:"required,min=1,dive"`

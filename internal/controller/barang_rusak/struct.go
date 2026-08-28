@@ -1,7 +1,7 @@
 package barang_rusak
 
 import (
-	notificationRepo "github.com/projsonal/gowms/internal/repositories/notification"
+	notificationRepo "github.com/projsonal/gowms/internal/repositories/notifikasi"
 
 	barangRepo "github.com/projsonal/gowms/internal/repositories/barang"
 	barangRusakRepo "github.com/projsonal/gowms/internal/repositories/barang_rusak"
@@ -13,23 +13,23 @@ import (
 const Module = constant.ModuleBarangRusak
 
 type Controller struct {
-	repo        barangRusakRepo.Repository
-	barangRepo  barangRepo.Repository
-	roleRepo    role.Repository
-	jwtSvc      *utils.JWTService
-	storagePath string
-	notifRepo   notificationRepo.Repository
+	repo       barangRusakRepo.Repository
+	barangRepo barangRepo.Repository
+	roleRepo   role.Repository
+	jwtSvc     *utils.JWTService
+	notifRepo  notificationRepo.Repository
 }
 
-func New(repo barangRusakRepo.Repository, barangRepo barangRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService, storagePath string, notifRepo notificationRepo.Repository) *Controller {
-	return &Controller{repo: repo, barangRepo: barangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, storagePath: storagePath, notifRepo: notifRepo}
+func New(repo barangRusakRepo.Repository, barangRepo barangRepo.Repository, roleRepo role.Repository, jwtSvc *utils.JWTService, notifRepo notificationRepo.Repository) *Controller {
+	return &Controller{repo: repo, barangRepo: barangRepo, roleRepo: roleRepo, jwtSvc: jwtSvc, notifRepo: notifRepo}
 }
 
 type BarangRusakRequest struct {
-	BarangID    *uint  `json:"barang_id" validate:"omitempty"`
-	LabelBarang string `json:"label_barang" validate:"required,max=60"`
-	NamaBarang  string `json:"nama_barang" validate:"required,max=150"`
-	Keterangan  string `json:"keterangan" validate:"max=500"`
+	BarangID     *uint  `json:"barang_id" validate:"omitempty"`
+	LabelBarang  string `json:"label_barang" validate:"required,max=60"`
+	NamaBarang   string `json:"nama_barang" validate:"required,max=150"`
+	SerialNumber string `json:"serial_number" validate:"max=100"`
+	Keterangan   string `json:"keterangan" validate:"max=500"`
 }
 
 type InspeksiRequest struct {

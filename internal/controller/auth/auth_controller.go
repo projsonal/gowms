@@ -14,6 +14,7 @@ import (
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	"github.com/projsonal/gowms/pkg/constant"
+	"github.com/projsonal/gowms/pkg/geoip"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
@@ -34,10 +35,20 @@ func (h *Controller) buildSessionInfo(c *fiber.Ctx) (device utils.DeviceInfo, ip
 	device = utils.ParseUserAgent(c.Get("User-Agent"))
 	ip = c.IP()
 
+	if ip == "" {
+		ip = c.Context().RemoteIP().String()
+	}
+
 	location, err := h.geoipSvc.Lookup(c.Context(), ip)
 	if err != nil {
 		log.Printf("auth: lookup geoip untuk IP %s gagal: %v", ip, err)
 		location = ""
+	}
+
+	if location == "" || location == "-" {
+		if tz := c.Get("X-Timezone"); tz != "" {
+			location = geoip.LocationFromTimezone(tz)
+		}
 	}
 	return device, ip, location
 }
@@ -117,7 +128,7 @@ func (h *Controller) CheckUsernameAvailability(c *fiber.Ctx) error {
 		return utils.OK(c, "username terlalu pendek", fiber.Map{"available": false})
 	}
 	_, err := h.userRepo.FindByUsername(username)
-	available := err != nil // error (tidak ketemu) berarti TERSEDIA
+	available := err != nil
 	return utils.OK(c, "berhasil cek ketersediaan username", fiber.Map{"available": available})
 }
 

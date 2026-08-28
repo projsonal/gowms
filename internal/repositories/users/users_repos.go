@@ -55,7 +55,6 @@ func (r *repository) UpdateLastLogin(userID uint) error {
 		Update("last_login_at", gorm.Expr("now()")).Error
 }
 
-// List — dipakai layar "Manajemen User: Semua akun pengguna sistem".
 func (r *repository) List(p utils.PaginationParams) ([]model.User, int64, error) {
 	var list []model.User
 	var total int64
@@ -75,10 +74,6 @@ func (r *repository) List(p utils.PaginationParams) ([]model.User, int64, error)
 	return list, total, nil
 }
 
-// RegisterFailedLogin menaikkan counter gagal login secara atomik. Kalau
-// counter mencapai maxAttempts, akun dikunci selama lockDuration —
-// mitigasi brute-force yang lolos dari captcha (mis. captcha di-bypass
-// tapi password tetap ditebak berkali-kali).
 func (r *repository) RegisterFailedLogin(userID uint, maxAttempts int, lockDuration time.Duration) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var u model.User
@@ -95,7 +90,6 @@ func (r *repository) RegisterFailedLogin(userID uint, maxAttempts int, lockDurat
 	})
 }
 
-// ResetFailedLogin dipanggil setelah login berhasil (reset counter & unlock).
 func (r *repository) ResetFailedLogin(userID uint) error {
 	return r.db.Model(&model.User{}).Where("id = ?", userID).
 		Updates(map[string]interface{}{"failed_login_attempts": 0, "locked_until": nil}).Error

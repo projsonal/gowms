@@ -2,9 +2,6 @@ package main
 
 import (
 	"log"
-	"os"
-	"strconv"
-	"time"
 
 	"github.com/projsonal/gowms/docs"
 	"github.com/projsonal/gowms/internal/controller/appinfo"
@@ -32,16 +29,6 @@ func main() {
 
 	deps := routes.New(db, cfg)
 	app := routes.SetupRouter(deps)
-
-	pingInterval := 60 * time.Second
-	if raw := os.Getenv("ASSET_PING_INTERVAL_SECONDS"); raw != "" {
-		if secs, err := strconv.Atoi(raw); err == nil && secs >= 0 {
-			pingInterval = time.Duration(secs) * time.Second
-		} else {
-			log.Printf("ASSET_PING_INTERVAL_SECONDS tidak valid (%q), pakai default 60 detik", raw)
-		}
-	}
-	deps.AssetController.StartAutoPingScheduler(pingInterval)
 
 	log.Printf("%s versi %s berjalan di %s (env: %s)", cfg.App.Name, appinfo.CurrentVersion, cfg.App.ListenAddress(), cfg.App.Env)
 	if err := app.Listen(cfg.App.ListenAddress()); err != nil {

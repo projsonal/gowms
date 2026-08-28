@@ -61,8 +61,6 @@ func (r *repository) Delete(id uint) error {
 	return r.db.Delete(&model.Supplier{}, id).Error
 }
 
-// InUse — lihat dokumentasi di interfaces.go. Cukup satu baris ditemukan
-// di salah satu tabel untuk dianggap "masih dipakai".
 func (r *repository) InUse(id uint) (bool, error) {
 	var poCount int64
 	if err := r.db.Model(&model.PurchaseOrder{}).Where("supplier_id = ?", id).Count(&poCount).Error; err != nil {
@@ -90,20 +88,11 @@ func (r *repository) CountActive() (int64, error) {
 	return count, err
 }
 
-// KurirStats lihat dokumentasi di interfaces.go. Query langsung ke tabel
-// pengiriman (model.Pengiriman) berdasarkan kecocokan NamaKurir — TANPA
-// join/foreign key formal, karena NamaKurir memang disimpan sebagai teks
-// bebas di Pengiriman (lihat catatan panjang soal ini di modules.ts
-// frontend). Kalau kurirNames kosong (supplier belum mengisi Kerjasama
-// Kurir), langsung kembalikan 0/0 tanpa query.
 func (r *repository) KurirStats(kurirNames []string) (int64, int64, error) {
 	if len(kurirNames) == 0 {
 		return 0, 0, nil
 	}
-	// LOWER(...) di kedua sisi — nama_kurir disimpan sebagai teks bebas, jadi
-	// variasi kapitalisasi ("GoSend" vs "gosend") sebelumnya bikin baris
-	// yang sebenarnya cocok tidak ikut terhitung (Total Order/Rating jadi
-	// 0 padahal datanya ada).
+
 	lowerNames := make([]string, len(kurirNames))
 	for i, n := range kurirNames {
 		lowerNames[i] = strings.ToLower(strings.TrimSpace(n))

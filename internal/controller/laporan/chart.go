@@ -9,22 +9,13 @@ import (
 	"github.com/projsonal/gowms/pkg/constant"
 )
 
-// ChartData — hasil agregasi generik untuk "Analisa Data" tiap laporan:
-// dipakai buat chart di UI (recharts, frontend) DAN diselipkan ke file
-// unduhan (PDF/Excel/Word) supaya angkanya konsisten di semua tempat.
 type ChartData struct {
 	Title  string    `json:"title"`
-	Type   string    `json:"type"` // "bar" | "line"
+	Type   string    `json:"type"`
 	Labels []string  `json:"labels"`
 	Values []float64 `json:"values"`
 }
 
-// Insight — ringkasan teks otomatis dari ChartData, dipakai sebagai
-// FALLBACK saat chart-nya sendiri tidak bisa disisipkan ke format file
-// tertentu (khususnya .docx — lihat pkg/reportexport/docs.go, dirakit
-// manual dari OOXML mentah tanpa library chart) — daripada tidak ada
-// analisa sama sekali di file itu, tetap ada ringkasan tekstual yang
-// mengandung informasi yang SAMA dengan yang divisualisasikan chart.
 func (cd *ChartData) Insight() string {
 	if cd == nil || len(cd.Values) == 0 {
 		return "Belum ada data yang cukup untuk dianalisis pada periode ini."
@@ -52,7 +43,6 @@ func trimFloat(f float64) string {
 	return s
 }
 
-// Granularity yang didukung untuk chart deret waktu (Harian/Bulanan/Tahunan).
 const (
 	GranularitasHarian  = "harian"
 	GranularitasBulanan = "bulanan"
@@ -74,18 +64,11 @@ func periodKey(t time.Time, granularity string) (key, label string) {
 		return t.Format("2006-01-02"), t.Format("2 Jan 2006")
 	case GranularitasTahunan:
 		return t.Format("2006"), t.Format("2006")
-	default: // bulanan
+	default:
 		return t.Format("2006-01"), t.Format("Jan 2006")
 	}
 }
 
-// computeDateSeriesChart menghitung JUMLAH BARIS (transaksi/dokumen) per
-// periode (hari/bulan/tahun) dari kolom tanggal — dipakai generik untuk
-// SEMUA laporan berbasis tanggal (Barang Keluar, Barang Masuk, Barang
-// Retur, Purchase Order, Stock Opname), supaya "Analisa Data" tersedia di
-// tiap menu Laporan tanpa logika terpisah per modul. `dateColCandidates`
-// berisi kemungkinan nama header kolom tanggal (dicoba berurutan, dipakai
-// yang pertama cocok) karena tiap laporan menamai kolom tanggalnya beda.
 func computeDateSeriesChart(title string, headers []string, rows [][]string, dateColCandidates []string, granularity string) *ChartData {
 	granularity = normalizeGranularity(granularity)
 	dateColIdx := -1
@@ -112,9 +95,7 @@ func computeDateSeriesChart(title string, headers []string, rows [][]string, dat
 		}
 		t, err := time.Parse(dateFormat, row[dateColIdx])
 		if err != nil {
-			// beberapa kolom tanggal diformat "2 Jan 2006" bukan
-			// dateFormat mentah — coba format alternatif sebelum menyerah
-			// pada baris ini.
+
 			t, err = time.Parse("2 January 2006", row[dateColIdx])
 			if err != nil {
 				continue
@@ -142,10 +123,6 @@ func computeDateSeriesChart(title string, headers []string, rows [][]string, dat
 	return cd
 }
 
-// computeTopStokChart — khusus Laporan Stok Barang (bukan deret waktu,
-// snapshot kondisi stok saat ini): top 10 barang dengan stok TERBANYAK,
-// bar chart menurun. Mengasumsikan kolom "Stok" ada di headers (lihat
-// buildStokBarang).
 func computeTopStokChart(headers []string, rows [][]string) *ChartData {
 	nameIdx, stokIdx := -1, -1
 	for i, h := range headers {
@@ -191,8 +168,6 @@ func computeTopStokChart(headers []string, rows [][]string) *ChartData {
 	return cd
 }
 
-// buildChart — dispatcher analog buildReport, memilih agregator yang
-// sesuai untuk tiap tipe laporan ("sesuaikan dari setiap menunya").
 func (h *Controller) buildChart(tipe string, headers []string, rows [][]string, granularity string) *ChartData {
 	switch tipe {
 	case constant.LaporanBarangKeluar:
@@ -201,6 +176,8 @@ func (h *Controller) buildChart(tipe string, headers []string, rows [][]string, 
 		return computeDateSeriesChart("Barang Masuk per Periode", headers, rows, []string{"Tanggal"}, granularity)
 	case constant.LaporanBarangRetur:
 		return computeDateSeriesChart("Barang Retur per Periode", headers, rows, []string{"Tanggal Diperiksa"}, granularity)
+	case constant.LaporanBarangRusak:
+		return computeDateSeriesChart("Laporan Barang Rusak per Periode", headers, rows, []string{"Tanggal Diperiksa"}, granularity)
 	case constant.LaporanStokOpname:
 		return computeDateSeriesChart("Stock Opname per Periode", headers, rows, []string{"Tanggal"}, granularity)
 	case constant.LaporanStokBarang:

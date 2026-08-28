@@ -10,11 +10,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// devMultiplier melonggarkan SEMUA limiter di file ini saat APP_ENV bukan
-// "production" — supaya testing manual berulang kali (klik "Kirim Kode
-// OTP" berkali-kali saat development) tidak langsung kena 429 dalam
-// hitungan detik seperti yang sebelumnya terjadi. Di production nilainya
-// tetap 1x (ketat seperti semula).
 func devMultiplier() int {
 	if os.Getenv("APP_ENV") == "production" {
 		return 1
@@ -120,11 +115,6 @@ func RegisterRateLimiter() fiber.Handler {
 	}
 }
 
-// ---------------------------------------------------------------------
-// Limiter untuk pengiriman kode OTP verifikasi nomor HP saat registrasi
-// (SMS/WhatsApp sungguhan terkirim, dan endpoint ini bisa dipakai untuk
-// enumerasi nomor kalau tidak dibatasi).
-// ---------------------------------------------------------------------
 const (
 	registerOTPRateLimitMax    = 5
 	registerOTPRateLimitWindow = 10 * time.Minute
@@ -142,16 +132,6 @@ func RegisterOTPRateLimiter() fiber.Handler {
 	}
 }
 
-// ---------------------------------------------------------------------
-// Limiter untuk permintaan OTP lupa password (SMS/WhatsApp sungguhan
-// terkirim, dan endpoint ini bisa dipakai untuk enumerasi nomor kalau
-// tidak dibatasi). CATATAN DEBUGGING: kalau kamu mengetes forgot-password
-// berkali-kali dalam waktu singkat dan tiba-tiba dapat 429 "terlalu
-// banyak permintaan reset password", ini BUKAN bug — limiter ini yang
-// bekerja seperti seharusnya. Tunggu ~10 menit atau restart server (state
-// limiter di memori, hilang saat proses restart) untuk reset cepat saat
-// development.
-// ---------------------------------------------------------------------
 const (
 	passwordResetRateLimitMax    = 5
 	passwordResetRateLimitWindow = 10 * time.Minute
@@ -169,13 +149,6 @@ func PasswordResetRateLimiter() fiber.Handler {
 	}
 }
 
-// ---------------------------------------------------------------------
-// Limiter untuk cek ketersediaan username (dipanggil berkali-kali saat
-// user mengetik di form daftar — jauh lebih sering dari submit form
-// biasa, jadi limitnya sengaja jauh lebih longgar daripada limiter lain
-// di file ini, tapi tetap ada supaya tidak bisa dipakai brute-force
-// enumerasi daftar username terdaftar dalam skala besar).
-// ---------------------------------------------------------------------
 const (
 	usernameCheckRateLimitMax    = 60
 	usernameCheckRateLimitWindow = time.Minute
@@ -193,15 +166,6 @@ func UsernameCheckRateLimiter() fiber.Handler {
 	}
 }
 
-// ---------------------------------------------------------------------
-// Global rate limiter — mitigasi dasar terhadap DDoS/brute-force
-// volumetrik pada SELURUH endpoint /wms-rsd, di luar limiter spesifik di
-// atas yang menyasar endpoint sensitif tertentu (login/register/OTP).
-// Ini bukan pengganti proteksi DDoS di layer jaringan (CDN/WAF), tapi
-// lini pertahanan minimal di level aplikasi — pola yang sama juga dipakai
-// middleware Clerk untuk menolak traffic berlebih sebelum mencapai
-// handler.
-// ---------------------------------------------------------------------
 const (
 	globalRateLimitMax    = 300
 	globalRateLimitWindow = time.Minute

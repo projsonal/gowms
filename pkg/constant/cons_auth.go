@@ -1,6 +1,5 @@
 package constant
 
-// digunakan untuk pesan auth
 const (
 	ErrSessionExpired = "sesi login sudah kedaluwarsa, silakan login ulang"
 	ErrUserNotFound   = "user tidak ditemukan"

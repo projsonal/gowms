@@ -1,11 +1,7 @@
-// Package role mengakses tabel roles, permissions, dan role_permissions —
-// fondasi RBAC dinamis (matrix akses per modul per role).
 package role
 
 import "github.com/projsonal/gowms/internal/model"
 
-// Repository mendefinisikan seluruh operasi data untuk Role & Permission.
-// Method HasPermission juga dipakai middleware.PermissionChecker.
 type Repository interface {
 	FindAll() ([]model.Role, error)
 	FindByID(id uint) (*model.Role, error)
@@ -20,8 +16,6 @@ type Repository interface {
 	GetMatrix(roleID uint) ([]ModulePermission, error)
 }
 
-// ModulePermission adalah representasi ringkas 1 baris matrix akses untuk
-// satu modul: Lihat | Tambah | Edit | Approval/Reject | Print | Assign/Delegasi.
 type ModulePermission struct {
 	Module         string `json:"module"`
 	View           bool   `json:"view"`

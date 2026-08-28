@@ -9,6 +9,7 @@ import (
 
 	"github.com/projsonal/gowms/internal/model"
 	barangSerial "github.com/projsonal/gowms/internal/repositories/barang_serial"
+	"github.com/projsonal/gowms/internal/repositories/barangstokgudang"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -41,7 +42,9 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangKel
 		return nil, 0, err
 	}
 	if err := p.Apply(q.Session(&gorm.Session{}).
-		Preload("Gudang").Preload("Items").Preload("Items.Barang").Order("id desc")).
+		Preload("Gudang").Preload("Items").
+		Preload("Items.Barang", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
+		Order("id desc")).
 		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
@@ -50,7 +53,9 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangKel
 
 func (r *repository) FindByID(id uint) (*model.BarangKeluar, error) {
 	var bk model.BarangKeluar
-	err := r.db.Preload("Gudang").Preload("Items").Preload("Items.Barang").Preload("Items.Rak").First(&bk, id).Error
+	err := r.db.Preload("Gudang").Preload("Items").
+		Preload("Items.Barang", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
+		First(&bk, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -106,10 +111,6 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 			return errors.New(constant.ErrBKBukanDraft)
 		}
 
-		// Validasi ketersediaan SEMUA item terlebih dahulu, sebelum
-		// mengubah apa pun — supaya dokumen dengan satu baris saja yang
-		// kurang stok tidak menyebabkan sebagian barang lain terlanjur
-		// terpotong (all-or-nothing).
 		barangByID := make(map[uint]model.Barang, len(bk.Items))
 		for _, item := range bk.Items {
 			var b model.Barang
@@ -117,24 +118,16 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 				return err
 			}
 			barangByID[item.BarangID] = b
-			if b.Stok < item.Qty {
-				return fmt.Errorf("%s (barang: %s, tersedia: %d, diminta: %d)",
-					constant.ErrBKStokTidakCukup, b.Nama, b.Stok, item.Qty)
+
+			stokGudang, err := barangstokgudang.GetStokGudangTx(tx, item.BarangID, bk.GudangID)
+			if err != nil {
+				return err
 			}
-			if item.RakID != nil {
-				var rak model.Rak
-				if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&rak, *item.RakID).Error; err != nil {
-					return err
-				}
-				if rak.Terisi < item.Qty {
-					return fmt.Errorf("%s (rak: %s, terisi: %d, diminta: %d)",
-						constant.ErrBKRakTidakCukup, rak.KodeRak, rak.Terisi, item.Qty)
-				}
+			if stokGudang < item.Qty {
+				return fmt.Errorf("%s (barang: %s, tersedia di gudang ini: %d, diminta: %d)",
+					constant.ErrBKStokTidakCukup, b.Nama, stokGudang, item.Qty)
 			}
-			// Barang IsSerialized: qty di sini HARUS dipenuhi lewat SN
-			// spesifik yang dipilih operator (bukan cuma angka), supaya
-			// unit fisik mana yang keluar tercatat jelas — lihat
-			// model.BarangSerial & barangSerial.ConsumeUnitsTx.
+
 			if b.IsSerialized {
 				sn := serials[item.ID]
 				if len(sn) != item.Qty {
@@ -154,10 +147,9 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 				Update("stok", gorm.Expr("stok - ?", item.Qty)).Error; err != nil {
 				return err
 			}
-			if item.RakID != nil {
-				if err := adjustRak(tx, *item.RakID, -item.Qty); err != nil {
-					return err
-				}
+
+			if err := barangstokgudang.AdjustStokGudangTx(tx, item.BarangID, bk.GudangID, -item.Qty); err != nil {
+				return err
 			}
 		}
 
@@ -172,23 +164,6 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 		return nil, err
 	}
 	return r.FindByID(id)
-}
-
-// adjustRak lihat dokumentasi di package barang_masuk — logika identik,
-// diduplikasi tipis di sini karena kedua package memang sengaja dibuat
-// independen (tidak saling meng-import) supaya masing-masing modul tetap
-// bisa berdiri sendiri.
-func adjustRak(tx *gorm.DB, rakID uint, delta int) error {
-	var rak model.Rak
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&rak, rakID).Error; err != nil {
-		return err
-	}
-	rak.Terisi += delta
-	if rak.Terisi < 0 {
-		rak.Terisi = 0
-	}
-	rak.RecalculateStatus()
-	return tx.Save(&rak).Error
 }
 
 func (r *repository) Batalkan(id uint) (*model.BarangKeluar, error) {

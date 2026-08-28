@@ -9,7 +9,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config merepresentasikan seluruh konfigurasi aplikasi.
 type Config struct {
 	App           AppConfig
 	DB            DBConfig
@@ -80,8 +79,6 @@ type CaptchaConfig struct {
 	TTLMinutes int
 }
 
-// HumanCheckConfig konfigurasi verifikasi "verify you are human" ala
-// Cloudflare Turnstile (lihat pkg/humancheck) yang dipakai ResetPassword.
 type HumanCheckConfig struct {
 	Secret          string
 	TTLMinutes      int
@@ -129,9 +126,6 @@ type SwaggerConfig struct {
 	BasicAuthPass string
 }
 
-// SelfUpdateConfig — env AUTO_UPDATE_* (lihat docs/self-update-setup.md).
-// Selama Enabled=false, GET /app/check-update & GET /app/update-status
-// tetap jalan normal (murni baca); hanya POST /app/update yang ditolak.
 type SelfUpdateConfig struct {
 	Enabled     bool
 	GitHubOwner string
@@ -147,7 +141,7 @@ func Load() *Config {
 
 	cfg := &Config{
 		App: AppConfig{
-			Name:           getEnv("APP_NAME", "WMS-RSD"),
+			Name:           getEnv("APP_NAME", "stockrsd"),
 			Env:            getEnv("APP_ENV", "development"),
 			Host:           getEnv("APP_HOST", ""),
 			Port:           getEnv("APP_PORT", "8080"),
@@ -158,7 +152,7 @@ func Load() *Config {
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "postgres"),
 			Password: getEnv("DB_PASSWORD", "t4mp4n"),
-			Name:     getEnv("DB_NAME", "wms-rsd"),
+			Name:     getEnv("DB_NAME", "stockrsd"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		JWT: JWTConfig{
@@ -195,7 +189,7 @@ func Load() *Config {
 			Driver:      getEnv("WHATSAPP_DRIVER", "gateway"),
 			APIURL:      getEnv("WHATSAPP_API_URL", ""),
 			APIKey:      getEnv("WHATSAPP_API_KEY", ""),
-			Sender:      getEnv("WHATSAPP_SENDER", "wms-RSD"),
+			Sender:      getEnv("WHATSAPP_SENDER", "stockrsd"),
 			SessionPath: getEnv("WHATSMEOW_SESSION_PATH", "./var/whatsmeow-session.db"),
 		},
 		WAOTP: WAOTPConfig{
@@ -205,7 +199,7 @@ func Load() *Config {
 		SMS: SMSConfig{
 			APIURL: getEnv("SMS_API_URL", ""),
 			APIKey: getEnv("SMS_API_KEY", ""),
-			Sender: getEnv("SMS_SENDER", "wms-RSD"),
+			Sender: getEnv("SMS_SENDER", "stockrsd"),
 		},
 		PasswordReset: PasswordResetConfig{
 			Secret:     getEnv("PASSWORD_RESET_SECRET", "change-me-password-reset-secret"),

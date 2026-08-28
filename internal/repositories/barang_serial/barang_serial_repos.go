@@ -22,6 +22,12 @@ func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
 	if f.Status != "" {
 		q = q.Where(constant.QueryStatusEq, f.Status)
 	}
+	if f.BarangMasukItemID != 0 {
+		q = q.Where("barang_masuk_item_id = ?", f.BarangMasukItemID)
+	}
+	if f.BarangKeluarItemID != 0 {
+		q = q.Where("barang_keluar_item_id = ?", f.BarangKeluarItemID)
+	}
 	return q
 }
 
@@ -37,7 +43,7 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangSer
 		return nil, 0, err
 	}
 	if err := p.Apply(q.Session(&gorm.Session{}).
-		Preload("Barang").Preload("Gudang").Preload("Rak").Order("id desc")).
+		Preload("Barang").Preload("Gudang").Order("id desc")).
 		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
@@ -46,7 +52,7 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangSer
 
 func (r *repository) FindByID(id uint) (*model.BarangSerial, error) {
 	var s model.BarangSerial
-	if err := r.db.Preload("Barang").Preload("Gudang").Preload("Rak").First(&s, id).Error; err != nil {
+	if err := r.db.Preload("Barang").Preload("Gudang").First(&s, id).Error; err != nil {
 		return nil, err
 	}
 	return &s, nil
@@ -54,7 +60,7 @@ func (r *repository) FindByID(id uint) (*model.BarangSerial, error) {
 
 func (r *repository) FindBySerial(serial string) (*model.BarangSerial, error) {
 	var s model.BarangSerial
-	err := r.db.Preload("Barang").Preload("Gudang").Preload("Rak").
+	err := r.db.Preload("Barang").Preload("Gudang").
 		Where("serial_number = ?", serial).First(&s).Error
 	if err != nil {
 		return nil, err
@@ -79,15 +85,7 @@ func (r *repository) CountByBarang(barangID uint) (int64, int64, int64, error) {
 
 func (r *repository) UpdateStatusManual(id uint, status string, catatan string) (*model.BarangSerial, error) {
 	updates := map[string]interface{}{"status": status, "catatan": catatan}
-	// Menandai "rusak" secara manual: unit dianggap tidak lagi ada di
-	// lokasi gudang manapun secara siap-pakai (sama seperti barang yang
-	// keluar), tapi tetap TIDAK dikaitkan ke dokumen Barang Keluar
-	// manapun (BarangKeluarItemID tetap nil) — beda ceritanya dengan
-	// "terpasang".
-	if status == constant.StatusSerialRusak {
-		updates["gudang_id"] = nil
-		updates["rak_id"] = nil
-	}
+
 	res := r.db.Model(&model.BarangSerial{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
 		return nil, res.Error
@@ -102,12 +100,7 @@ func (r *repository) Delete(id uint) error {
 	return r.db.Delete(&model.BarangSerial{}, id).Error
 }
 
-// Create mendaftarkan satu unit baru secara MANUAL (bukan lewat Complete()
-// dokumen Barang Masuk) — lihat dokumentasi lengkap di interfaces.go.
-// Transaksional: validasi barang/gudang, cek keunikan SN, insert baris
-// baru berstatus tersedia, DAN naikkan Barang.Stok +1 supaya agregat
-// tetap sinkron dengan rincian per-unit — semuanya all-or-nothing.
-func (r *repository) Create(barangID, gudangID uint, rakID *uint, serialNumber, catatan string) (*model.BarangSerial, error) {
+func (r *repository) Create(barangID, gudangID uint, serialNumber, catatan string) (*model.BarangSerial, error) {
 	var created model.BarangSerial
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		var b model.Barang
@@ -142,16 +135,12 @@ func (r *repository) Create(barangID, gudangID uint, rakID *uint, serialNumber, 
 			SerialNumber: serialNumber,
 			Status:       constant.StatusSerialTersedia,
 			GudangID:     &gudangID,
-			RakID:        rakID,
 			Catatan:      catatan,
 		}
 		if err := tx.Create(&created).Error; err != nil {
 			return err
 		}
 
-		// Naikkan stok agregat +1, konsisten dengan cara Complete() Barang
-		// Masuk menambah stok saat unit-unit ber-SN dibuat lewat dokumen —
-		// lihat internal/repositories/barang_masuk Complete().
 		return tx.Model(&model.Barang{}).Where("id = ?", barangID).
 			Update("stok", gorm.Expr("stok + ?", 1)).Error
 	})
@@ -161,17 +150,7 @@ func (r *repository) Create(barangID, gudangID uint, rakID *uint, serialNumber, 
 	return r.FindByID(created.ID)
 }
 
-// --- Helper transaksional dipakai LANGSUNG (tanpa lewat interface di
-// atas) oleh repositories/barang_masuk & repositories/barang_keluar,
-// supaya pembuatan/konsumsi unit SN ikut dalam transaksi DB yang sama
-// dengan penyesuaian stok agregat & rak — all-or-nothing bersama proses
-// Complete() dokumen induknya, persis pola adjustRak() di kedua paket
-// itu. Diekspor (huruf besar) karena dipanggil lintas-paket.
-
-// CreateUnitsTx mendaftarkan unit baru (hasil Barang Masuk) sejumlah
-// serials. Menolak kalau ada SN yang sudah pernah terdaftar di sistem
-// (unique secara global, lihat model.BarangSerial.SerialNumber).
-func CreateUnitsTx(tx *gorm.DB, barangID, gudangID uint, rakID *uint, bmItemID uint, serials []string) error {
+func CreateUnitsTx(tx *gorm.DB, barangID, gudangID uint, bmItemID uint, serials []string) error {
 	if len(serials) == 0 {
 		return nil
 	}
@@ -195,20 +174,12 @@ func CreateUnitsTx(tx *gorm.DB, barangID, gudangID uint, rakID *uint, bmItemID u
 			SerialNumber:      sn,
 			Status:            constant.StatusSerialTersedia,
 			GudangID:          &gudangID,
-			RakID:             rakID,
 			BarangMasukItemID: &bmItemID,
 		})
 	}
 	return tx.Create(&rows).Error
 }
 
-// ConsumeUnitsTx menandai unit-unit dengan SN yang dipilih sebagai
-// "terpasang" (keluar dari gudang) saat dokumen Barang Keluar
-// diselesaikan. Memvalidasi tiap SN: harus sudah terdaftar untuk
-// BarangID yang sama, berstatus "tersedia", dan sedang berada di
-// GudangID asal dokumen — supaya tidak bisa "mengeluarkan" unit yang
-// sebenarnya berada/tercatat di gudang lain atau sudah lebih dulu
-// keluar/rusak.
 func ConsumeUnitsTx(tx *gorm.DB, barangID, gudangID uint, bkItemID uint, serials []string) error {
 	if len(serials) == 0 {
 		return nil
@@ -239,7 +210,6 @@ func ConsumeUnitsTx(tx *gorm.DB, barangID, gudangID uint, bkItemID uint, serials
 		if err := tx.Model(&model.BarangSerial{}).Where("id = ?", unit.ID).Updates(map[string]interface{}{
 			"status":                constant.StatusSerialTerpasang,
 			"gudang_id":             nil,
-			"rak_id":                nil,
 			"barang_keluar_item_id": bkItemID,
 		}).Error; err != nil {
 			return err
@@ -248,9 +218,6 @@ func ConsumeUnitsTx(tx *gorm.DB, barangID, gudangID uint, bkItemID uint, serials
 	return nil
 }
 
-// CountAvailableTx menghitung berapa unit BERSTATUS TERSEDIA milik
-// barangID yang sedang berada di gudangID — dipakai memvalidasi qty
-// permintaan Barang Keluar sebelum minta operator memilih SN satu-satu.
 func CountAvailableTx(tx *gorm.DB, barangID, gudangID uint) (int64, error) {
 	var count int64
 	err := tx.Model(&model.BarangSerial{}).
@@ -259,17 +226,6 @@ func CountAvailableTx(tx *gorm.DB, barangID, gudangID uint) (int64, error) {
 	return count, err
 }
 
-// RiwayatDokumen mengikuti jejak BarangMasukItemID/BarangKeluarItemID
-// milik satu unit untuk mengambil NOMOR dokumen induknya (bukan cuma ID
-// baris item) — lewat JOIN manual, BUKAN preload GORM, supaya tidak perlu
-// menambah field relasi baru ke model.BarangMasukItem/BarangKeluarItem
-// (yang dipakai luas di modul lain; menambah field di sana berisiko
-// mengubah bentuk JSON respons endpoint lain yang tidak terkait).
-//
-// sql.ErrNoRows SENGAJA diabaikan (bukan dikembalikan sebagai error) —
-// kalau baris item-nya kebetulan sudah tidak ada (mis. dihapus saat masih
-// draft, jarang terjadi untuk unit yang sudah "tersedia"/"terpasang"),
-// hasilnya cukup nomor kosong, bukan gagal total menampilkan unit.
 func (r *repository) RiwayatDokumen(s *model.BarangSerial) (string, string, error) {
 	var nomorMasuk, nomorKeluar string
 	if s.BarangMasukItemID != nil {

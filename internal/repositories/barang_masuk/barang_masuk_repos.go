@@ -9,6 +9,7 @@ import (
 
 	"github.com/projsonal/gowms/internal/model"
 	barangSerial "github.com/projsonal/gowms/internal/repositories/barang_serial"
+	"github.com/projsonal/gowms/internal/repositories/barangstokgudang"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
@@ -21,11 +22,7 @@ func applyFilter(q *gorm.DB, f Filter) *gorm.DB {
 		q = q.Where(constant.QueryGudangIDEq, f.GudangID)
 	}
 	if f.KategoriID != 0 {
-		// Dokumen barang masuk bisa berisi beberapa item; JOIN + DISTINCT
-		// (dengan SELECT eksplisit ke tabel utama supaya tidak "ambiguous
-		// column" karena semua tabel yang di-JOIN sama-sama punya kolom id)
-		// supaya satu dokumen tidak muncul dobel kalau punya >1 item
-		// dengan kategori yang sama.
+
 		q = q.Select("barang_masuk.*").Distinct().
 			Joins("JOIN barang_masuk_items ON barang_masuk_items.barang_masuk_id = barang_masuk.id").
 			Joins("JOIN barang ON barang.id = barang_masuk_items.barang_id").
@@ -46,7 +43,9 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangMas
 		return nil, 0, err
 	}
 	if err := p.Apply(q.Session(&gorm.Session{}).
-		Preload("Gudang").Preload("Items").Preload("Items.Barang").Order("id desc")).
+		Preload("Gudang").Preload("Items").
+		Preload("Items.Barang", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
+		Order("id desc")).
 		Find(&list).Error; err != nil {
 		return nil, 0, err
 	}
@@ -56,7 +55,8 @@ func (r *repository) List(p utils.PaginationParams, f Filter) ([]model.BarangMas
 func (r *repository) FindByID(id uint) (*model.BarangMasuk, error) {
 	var bm model.BarangMasuk
 	err := r.db.Preload("Gudang").
-		Preload("Items").Preload("Items.Barang").Preload("Items.Rak").
+		Preload("Items").
+		Preload("Items.Barang", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
 		First(&bm, id).Error
 	if err != nil {
 		return nil, err
@@ -118,16 +118,14 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 			if err := tx.First(&b, item.BarangID).Error; err != nil {
 				return err
 			}
-			// Barang bertanda IsSerialized WAJIB disertai SN sejumlah
-			// persis Qty saat diselesaikan — inilah titik masuk data unit
-			// fisik (lihat barang_serial.CreateUnitsTx & model.BarangSerial).
+
 			if b.IsSerialized {
 				sn := serials[item.ID]
 				if len(sn) != item.Qty {
 					return fmt.Errorf("%s (barang: %s, qty: %d, sn diisi: %d)",
 						constant.ErrSerialJumlahTidakSesuai, b.Nama, item.Qty, len(sn))
 				}
-				if err := barangSerial.CreateUnitsTx(tx, item.BarangID, bm.GudangID, item.RakID, item.ID, sn); err != nil {
+				if err := barangSerial.CreateUnitsTx(tx, item.BarangID, bm.GudangID, item.ID, sn); err != nil {
 					return err
 				}
 			}
@@ -136,10 +134,20 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 				Update("stok", gorm.Expr("stok + ?", item.Qty)).Error; err != nil {
 				return err
 			}
-			if item.RakID != nil {
-				if err := adjustRak(tx, *item.RakID, item.Qty); err != nil {
+
+			if item.HargaSatuan > 0 {
+				stokLama, hargaLama := b.Stok, b.HargaBeli
+				stokBaru := stokLama + item.Qty
+				totalNilaiBaru := int64(stokLama)*hargaLama + int64(item.Qty)*item.HargaSatuan
+				hargaRataRata := totalNilaiBaru / int64(stokBaru)
+				if err := tx.Model(&model.Barang{}).Where("id = ?", item.BarangID).
+					Update("harga_beli", hargaRataRata).Error; err != nil {
 					return err
 				}
+			}
+
+			if err := barangstokgudang.AdjustStokGudangTx(tx, item.BarangID, bm.GudangID, item.Qty); err != nil {
+				return err
 			}
 		}
 
@@ -154,23 +162,6 @@ func (r *repository) Complete(id uint, userID uint, serials map[uint][]string) (
 		return nil, err
 	}
 	return r.FindByID(id)
-}
-
-// adjustRak menambah/mengurangi Terisi pada rak, meng-clamp ke [0, tak
-// terbatas] lalu menghitung ulang status kosong/terisi_sebagian/penuh —
-// sama persis dengan logika Rak.RecalculateStatus di modul Manajemen
-// Gudang (murni dari angka tercatat, tidak perlu sensor IoT).
-func adjustRak(tx *gorm.DB, rakID uint, delta int) error {
-	var rak model.Rak
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&rak, rakID).Error; err != nil {
-		return err
-	}
-	rak.Terisi += delta
-	if rak.Terisi < 0 {
-		rak.Terisi = 0
-	}
-	rak.RecalculateStatus()
-	return tx.Save(&rak).Error
 }
 
 func (r *repository) Batalkan(id uint) (*model.BarangMasuk, error) {

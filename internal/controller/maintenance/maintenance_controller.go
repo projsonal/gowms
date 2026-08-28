@@ -9,16 +9,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	notification "github.com/projsonal/gowms/internal/controller/notification"
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/pkg/constant"
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// logMaintenanceEvent menulis satu baris audit trail ke var/log/maintenance.log
-// setiap kali super_admin mengaktifkan/menonaktifkan mode maintenance —
-// terpisah dari backend.log umum supaya gampang diaudit siapa & kapan
-// fitur ini dipakai (dampaknya besar: memblokir semua role non-super_admin).
 func logMaintenanceEvent(userID uint, isActive bool, message string) {
 	logDir := filepath.Join("var", "log")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {

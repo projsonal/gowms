@@ -21,10 +21,7 @@ func (h *Controller) Summary(c *fiber.Ctx) error {
 	}
 
 	totalGudang, _ := h.gudangRepo.CountGudang()
-	totalRak, _ := h.gudangRepo.CountRakAll()
-	rakPenuh, _ := h.gudangRepo.CountRakByStatus("penuh")
-	rakKosong, _ := h.gudangRepo.CountRakByStatus("kosong")
-	res.Gudang = GudangSummary{TotalGudang: totalGudang, TotalRak: totalRak, RakPenuh: rakPenuh, RakKosong: rakKosong}
+	res.Gudang = GudangSummary{TotalGudang: totalGudang}
 
 	bmDraft, _ := h.barangMasukRepo.CountByStatus(constant.StatusBMDraft)
 	bmSelesai, _ := h.barangMasukRepo.CountByStatus(constant.StatusBMSelesai)
@@ -49,7 +46,6 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Get("/activity", view, h.Activity)
 	g.Get("/analisa", view, h.Analisa)
 	g.Get("/notifications", view, h.Notifications)
-	g.Get("/gudang/beban", view, h.GudangBeban)
 
 	lg := router.Group("/laporan", middleware.JWTAuth(h.jwtSvc))
 	lg.Get("/:jenis/preview", view, h.ReportPreview)

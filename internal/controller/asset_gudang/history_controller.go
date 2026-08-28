@@ -8,10 +8,6 @@ import (
 	"github.com/projsonal/gowms/pkg/utils"
 )
 
-// logHistory — catat satu kejadian riwayat aset. GAGAL DIAM-DIAM
-// (dilog tapi tidak menggagalkan request utama) — riwayat itu penting
-// tapi bukan operasi kritis; kalau gagal tersimpan, aksi utamanya (ubah
-// status, dsb) tetap harus berhasil.
 func (h *Controller) logHistory(c *fiber.Ctx, assetID uint, eventType, fieldLama, fieldBaru, catatan string) {
 	userID, _ := c.Locals(constant.CtxUserID).(uint)
 	var uid *uint
@@ -28,10 +24,6 @@ func (h *Controller) logHistory(c *fiber.Ctx, assetID uint, eventType, fieldLama
 	})
 }
 
-// ListHistory GET /aset/:id/riwayat — timeline perubahan aset, terbaru
-// dulu. Ini INTI fitur "tracking aset" yang sebenarnya: bukan cuma lihat
-// kondisi terkini, tapi tahu apa yang berubah, kapan, dan siapa yang
-// mengubah — dipakai tab "Riwayat" di panel detail Tracking Aset.
 func (h *Controller) ListHistory(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {

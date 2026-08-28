@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	notification "github.com/projsonal/gowms/internal/controller/notification"
+	notification "github.com/projsonal/gowms/internal/controller/notifikasi"
 	"github.com/projsonal/gowms/internal/middleware"
 	"github.com/projsonal/gowms/internal/model"
 	pgRepo "github.com/projsonal/gowms/internal/repositories/pengiriman"
@@ -47,7 +47,6 @@ func (h *Controller) validateRequest(req PengirimanRequest) error {
 	return nil
 }
 
-// List GET /pengiriman?page=&limit=&search=&status=&gudang_asal_id=&jenis=
 func (h *Controller) List(c *fiber.Ctx) error {
 	p := utils.PaginationFromContext(c)
 	gudangID, _ := strconv.ParseUint(c.Query("gudang_asal_id", "0"), 10, 64)
@@ -60,7 +59,6 @@ func (h *Controller) List(c *fiber.Ctx) error {
 	return utils.OKWithMeta(c, "daftar pengiriman berhasil diambil", list, utils.BuildPaginationMeta(p, total))
 }
 
-// Detail GET /pengiriman/:id
 func (h *Controller) Detail(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -121,7 +119,6 @@ func (h *Controller) requireDraft(id uint) (*model.Pengiriman, error) {
 	return pg, nil
 }
 
-// Update PUT /pengiriman/:id — hanya boleh selama status masih draft.
 func (h *Controller) Update(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -164,7 +161,6 @@ func (h *Controller) Update(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen pengiriman berhasil diperbarui", pg)
 }
 
-// Delete DELETE /pengiriman/:id — hanya boleh selama status draft.
 func (h *Controller) Delete(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -184,8 +180,6 @@ func (h *Controller) Delete(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen pengiriman berhasil dihapus", nil)
 }
 
-// ProtectPengiriman PATCH /pengiriman/:id/protect — aksi "Protect" di
-// action bar tabel. HANYA super_admin (lihat RegisterRoutes).
 func (h *Controller) ProtectPengiriman(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -205,7 +199,6 @@ func (h *Controller) ProtectPengiriman(c *fiber.Ctx) error {
 	return utils.OK(c, "status proteksi berhasil diubah", pg)
 }
 
-// Jadwalkan PATCH /pengiriman/:id/jadwalkan — draft -> dijadwalkan, assign kurir.
 func (h *Controller) Jadwalkan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -231,7 +224,6 @@ func (h *Controller) Jadwalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "pengiriman berhasil dijadwalkan", pg)
 }
 
-// Mulai PATCH /pengiriman/:id/mulai — dijadwalkan -> dalam_perjalanan.
 func (h *Controller) Mulai(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -244,8 +236,6 @@ func (h *Controller) Mulai(c *fiber.Ctx) error {
 	return utils.OK(c, "pengiriman dimulai, silakan kirim update lokasi secara berkala", pg)
 }
 
-// KirimLokasi POST /pengiriman/:id/lokasi — ping posisi GPS kurir, hanya
-// diterima selama status "dalam_perjalanan".
 func (h *Controller) KirimLokasi(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -268,9 +258,6 @@ func (h *Controller) KirimLokasi(c *fiber.Ctx) error {
 	return utils.OK(c, "lokasi berhasil diperbarui", pg)
 }
 
-// LokasiTerkini GET /pengiriman/:id/lokasi?history=true&limit=200 —
-// posisi terakhir kurir, dan (opsional) riwayat titik jalur untuk
-// digambar sebagai rute di peta.
 func (h *Controller) LokasiTerkini(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -301,7 +288,6 @@ func (h *Controller) LokasiTerkini(c *fiber.Ctx) error {
 	return utils.OK(c, "lokasi pengiriman berhasil diambil", res)
 }
 
-// Selesaikan PATCH /pengiriman/:id/selesai — dalam_perjalanan -> terkirim.
 func (h *Controller) Selesaikan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -319,7 +305,6 @@ func (h *Controller) Selesaikan(c *fiber.Ctx) error {
 	return utils.OK(c, "pengiriman berhasil diselesaikan", pg)
 }
 
-// Batalkan PATCH /pengiriman/:id/batalkan
 func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	id, err := parseIDParam(c)
 	if err != nil {
@@ -332,7 +317,6 @@ func (h *Controller) Batalkan(c *fiber.Ctx) error {
 	return utils.OK(c, "dokumen pengiriman berhasil dibatalkan", pg)
 }
 
-// Summary GET /pengiriman/summary
 func (h *Controller) Summary(c *fiber.Ctx) error {
 	total, err := h.repo.CountByStatus("")
 	jalan, err2 := h.repo.CountByStatus(constant.StatusPGDalamPerjalanan)
@@ -345,7 +329,6 @@ func (h *Controller) Summary(c *fiber.Ctx) error {
 	})
 }
 
-// RegisterRoutes mendaftarkan endpoint modul "Pengiriman".
 func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g := router.Group("/pengiriman", middleware.JWTAuth(h.jwtSvc))
 
@@ -367,5 +350,5 @@ func (h *Controller) RegisterRoutes(router fiber.Router) {
 	g.Post("/:id/lokasi", edit, h.KirimLokasi)
 	g.Patch("/:id/selesai", edit, h.Selesaikan)
 	g.Patch("/:id/batalkan", edit, h.Batalkan)
-	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectPengiriman) // Protect — khusus super admin
+	g.Patch("/:id/protect", onlySuperAdmin, h.ProtectPengiriman)
 }
